@@ -1,0 +1,31 @@
+# ── Python backend ────────────────────────────────────────────────────────────
+python_backend/.venv/
+python_backend/__pycache__/
+python_backend/build/
+python_backend/dist/
+python_backend/chrome_profile/
+python_backend/uploaded_files/
+python_backend/**/__pycache__/
+python_backend/**/*.pyc
+
+# ── Config (contains API key) ─────────────────────────────────────────────────
+config.json
+
+# ── Node ──────────────────────────────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── Tauri build output ────────────────────────────────────────────────────────
+src-tauri/target/
+
+# ── Session and agent data ────────────────────────────────────────────────────
+agent_sessions/
+agent_audit_logs/
+
+# ── OS / editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp

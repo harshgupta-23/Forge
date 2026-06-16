@@ -1,0 +1,7 @@
+{
+  "GEMINI_API_KEY": "",
+  "GEMINI_MODEL": "gemma-4-26b-a4b-it",
+  "GEMINI_API_BASE": "https://generativelanguage.googleapis.com/v1beta/openai/",
+  "AGENT_WORK_DIR": "",
+  "THEME": "dark"
+}

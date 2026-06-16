@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent System Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-theme">
+<div id="app-container">
+  <header>
+    <h2>🤖 Forge — Local AI Assistant</h2>
+    <button id="btn-clear">🗑 Clear</button>
+    <button id="btn-undo">↩ Undo</button>
+    <button id="btn-summarise">⚡ Summarise</button>
+    <button id="toggle-settings">⚙ Settings</button>
+  </header>
+
+  <div id="settings-panel" class="hidden">
+    <h3>Environment Configuration</h3>
+    <label>Gemini API Key:
+      <input type="password" id="cfg-key" placeholder="AIStudio Key">
+    </label>
+    <label>Active Engine Model:
+      <input type="text" id="cfg-model">
+    </label>
+    <label>Working Output Path:
+      <input type="text" id="cfg-dir">
+    </label>
+    <label>Visual Interface Scheme:
+      <select id="cfg-theme">
+        <option value="dark">Dark Theme</option>
+        <option value="light">Light Theme</option>
+      </select>
+    </label>
+    <button id="save-settings">Commit Setup Changes</button>
+  </div>
+
+  <div id="terminal-chat">
+    <div id="logs"></div>
+    <div id="agent-status-bar"></div>
+  </div>
+
+  <div id="drop-zone">Drop file here to attach</div>
+
+  <div id="path-input-area">
+    <input type="text" id="path-input" placeholder="Or paste absolute path: C:\Users\...">
+    <button id="attach-path-btn">Attach Path</button>
+  </div>
+
+  <div id="input-area">
+    <input type="text" id="user-input" placeholder="Issue localized platform execution command...">
+    <button id="send-btn">Execute</button>
+  </div>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>

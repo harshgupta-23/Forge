@@ -1,0 +1,258 @@
+:root {
+  --bg-primary: #121216;
+  --bg-panel: #1e1e24;
+  --bg-input: #18181c;      /* Dark field background */
+  --text-main: #f5f5f5;
+  --text-input: #ffffff;    /* White text for dark fields */
+  --text-muted: #a0a0aa;
+  
+  /* Vibrant Action Colors */
+  --accent: #00fa9a;
+  --accent-hover: #00d683;
+  --accent-active: #00b36e;
+  
+  --secondary: #3b82f6;
+  --secondary-hover: #2563eb;
+  
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #06b6d4;
+  
+  --border-color: #2e2e38;
+}
+
+body.light-theme {
+  --bg-primary: #f4f4f5;
+  --bg-panel: #ffffff;
+  --bg-input: #ffffff;      /* Light field background */
+  --text-main: #18181b;
+  --text-input: #18181b;    /* Dark text for light fields */
+  --text-muted: #71717a;
+  
+  --accent: #007aff;
+  --accent-hover: #0062cc;
+  --accent-active: #004ea3;
+  
+  --border-color: #e4e4e7;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 10px;
+}
+
+#app-container {
+  display: flex;
+  flex-direction: column;
+  height: 95vh;
+  position: relative; /* Add this to anchor the settings panel */
+}
+
+#terminal-chat {
+  flex-grow: 1;
+  border: 1px solid #444;
+  overflow-y: auto;
+  padding: 15px;
+  margin-bottom: 10px;
+  border-radius: 6px;
+}
+
+.hidden { display: none !important; }
+
+#settings-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  padding: 20px;
+  border-radius: 8px;
+  
+  /* Floating positioning layout */
+  position: absolute;
+  top: 55px; /* Adjust this so it clears your header height perfectly */
+  right: 10px;
+  width: 320px;
+  z-index: 100; /* Makes sure it sits on top of the chat area */
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+
+  /* Smooth sliding-down animation state */
+  opacity: 1;
+  transform: translateY(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+#settings-panel.hidden {
+  display: block !important; /* Override display none so animation works */
+  opacity: 0;
+  transform: translateY(-20px);
+  pointer-events: none; /* Prevents clicking invisible fields */
+}
+
+label { display: block; margin-top: 10px; }
+input, select { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+#input-area { display: flex; gap: 10px; }
+#user-input { flex-grow: 1; }
+
+#drop-zone {
+  border: 2px dashed #555;
+  border-radius: 6px;
+  padding: 10px;
+  text-align: center;
+  color: #888;
+  font-size: 13px;
+  margin: 6px 10px 4px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+#drop-zone.drag-over {
+  border-color: #7eb8f7;
+  color: #7eb8f7;
+}
+#path-input-area {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px 4px;
+}
+#path-input {
+  flex: 1;
+  background: #1e1e1e;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #ccc;
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
+button {
+  font-family: inherit;
+  font-weight: 500;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  
+  /* This creates the smooth transition effect */
+  transition: all 0.25s ease;
+  outline: none;
+}
+
+/* Subtle physical lift and brightness on hover */
+button:hover {
+  background: #2a2a35;
+  border-color: #555;
+  transform: translateY(-1px);
+}
+
+/* Slightly shrinks when clicked to mimic a real button push */
+button:active {
+  transform: translateY(1px);
+}
+
+/* --- Header Action Buttons Custom Styling --- */
+#btn-clear:hover { 
+  background-color: rgba(239, 68, 68, 0.15);
+  border-color: var(--danger); 
+  color: #ff6b6b; 
+}
+#btn-clear:active { background-color: var(--danger); color: #fff; }
+
+#btn-undo:hover { 
+  background-color: rgba(245, 158, 11, 0.15);
+  border-color: var(--warning); 
+  color: #ffd06b; 
+}
+#btn-undo:active { background-color: var(--warning); color: #fff; }
+
+#btn-summarise:hover { 
+  background-color: rgba(6, 182, 212, 0.15);
+  border-color: var(--info); 
+  color: #6be0ff; 
+}
+#btn-summarise:active { background-color: var(--info); color: #fff; }
+
+#toggle-settings:hover {
+  background-color: rgba(59, 130, 246, 0.15);
+  border-color: var(--secondary);
+  color: #6ba4ff;
+}
+#toggle-settings:active { background-color: var(--secondary); color: #fff; }
+
+/* --- Main Action Inputs and Buttons --- */
+#send-btn {
+  background-color: var(--accent);
+  color: #052e16; /* Dark text on bright background looks sharper */
+  border: none;
+  font-weight: 600;
+}
+#send-btn:hover {
+  background-color: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 0 12px rgba(0, 250, 154, 0.3);
+}
+#send-btn:active {
+  background-color: var(--accent-active);
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+#attach-path-btn {
+  background: #22c55e;
+  color: #ffffff;
+  border: none;
+}
+#attach-path-btn:hover {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+#attach-path-btn:active {
+  background: #15803d;
+  transform: translateY(1px);
+}
+
+#save-settings {
+  background-color: var(--secondary);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  width: 100%;
+  margin-top: 12px;
+}
+#save-settings:hover { background-color: var(--secondary-hover); }
+
+/* --- Input Improvements to match --- */
+input[type="text"], input[type="password"], select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-input);
+  padding: 8px 12px;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
+}
+
+/* Make sure placeholders are legible too */
+input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+input[type="text"]:focus, input[type="password"]:focus, select:focus {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  outline: none;
+}
+
+/* Fix text colors inside labels/headers within settings panel */
+#settings-panel h3 {
+  color: var(--text-main);
+  margin-top: 0;
+}
+
+#settings-panel label {
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
