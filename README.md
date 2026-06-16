@@ -20,7 +20,7 @@ The UI is a Tauri desktop app (Rust shell + web frontend). The backend is a Pyth
 
 ![Architecture diagram](docs/architecture.svg)
 
-*The Tauri shell launches the Python sidecar automatically in production. In development, `start.bat` starts both independently. The frontend communicates with the Python backend exclusively over a local WebSocket — no HTTP server, no REST API, no external relay.*
+*The frontend communicates with the Python backend exclusively over a local WebSocket — no HTTP server, no REST API, no external relay.*
 
 ---
 
@@ -41,17 +41,31 @@ The UI is a Tauri desktop app (Rust shell + web frontend). The backend is a Pyth
 - **Settings UI** — change API key, model, working directory, and theme without touching config files
 - **Theme support** — dark and light mode
 - **Graceful shutdown** — closing the window saves the session and terminates the Python sidecar automatically
-- **Custom tools for all users** — MSI-installed users can add tools too, no rebuilding required (see below)
+- **Custom tools** — extend the agent with your own Python tools, no rebuild required
 
 ---
 
-## Installation
+## Getting started
 
-Download the latest installer from [Releases](../../releases):
+**Requirements:** Python 3.11+, Node.js 18+, Rust (stable), Google Chrome
 
-**Windows:** `Forge_x.x.x_x64_en-US.msi` — double-click and install like any Windows app.
+**First time only:**
 
-On first launch, open Settings (⚙ top right) and enter your API key.
+```cmd
+git clone https://github.com/harshgupta-23/forge.git
+cd forge
+setup.bat
+```
+
+`setup.bat` creates the venv, installs all Python and Node dependencies, installs Playwright browsers, and copies `config.template.json` → `config.json`. Then open Settings in the app and enter your API key and your preferred output directory for agent-created files.
+
+**Every time after that:**
+
+```cmd
+start.bat
+```
+
+`start.bat` starts the Python backend in a separate terminal, waits 3 seconds, then launches the Tauri UI.
 
 ---
 
@@ -60,10 +74,10 @@ On first launch, open Settings (⚙ top right) and enter your API key.
 1. Open **Settings** (⚙ button, top right)
 2. Enter your **API key** — Google AI Studio keys work out of the box (`AIzaSy...`)
 3. Set the **model** — default is `gemma-4-27b-it`; use any model string your provider supports
-4. Optionally set a **working output path** — where the agent saves files it creates
+4. Set your **output directory** — where the agent saves files it creates
 5. Click **Commit Setup Changes**
 
-Your config is saved to `~/.myagent/config.json` — never inside the app bundle.
+Your config is saved to `~/.myagent/config.json` — never inside the source tree.
 
 ### Supported API providers
 
@@ -92,7 +106,7 @@ Any OpenAI-compatible endpoint works:
 | `write_clipboard` | Writes text to the clipboard |
 | `list_directory` | Lists files and folders in a directory |
 | `copy_file` | Copies a file from one path to another |
-| `pip_install` | Installs a Python package into the system Python at runtime |
+| `pip_install` | Installs a Python package into system Python at runtime |
 | `get_environment_info` | Returns system info — OS, Python version, environment variables |
 
 ---
@@ -100,8 +114,6 @@ Any OpenAI-compatible endpoint works:
 ## Adding custom tools
 
 This is the core design principle of Forge: **any Python file dropped into the tools folder becomes an agent tool automatically.**
-
-### If you cloned the repo (dev)
 
 Drop your tool into `python_backend/tools/`:
 
@@ -118,15 +130,9 @@ def my_tool(input: str) -> str:
     return "result"
 ```
 
-### If you installed via MSI
+Restart Forge and the tool is live. No other changes needed anywhere.
 
-Drop your tool into:
-
-```
-C:\Users\<YourName>\.myagent\tools\my_tool.py
-```
-
-No rebuild needed. Restart Forge and the tool is live.
+You can also drop tools into `~/.myagent/tools/` — these are loaded at runtime and kept separate from the source tree.
 
 ### Rules for custom tools
 
@@ -139,7 +145,7 @@ No rebuild needed. Restart Forge and the tool is live.
 ### Example: a currency converter tool
 
 ```python
-# my_tool.py
+# tools/convert_currency.py
 import urllib.request
 import json
 from langchain_core.tools import tool
@@ -175,39 +181,7 @@ def is_path_protected(file_path: str) -> bool:
 
 This prevents the agent from reading or writing your API key (`config.json`), any `.env` file, or any file inside the `python_backend/` source directory — even if instructed to do so by a prompt injection or a malicious webpage visited via `browser_action`. Attempts to access protected paths are blocked and the agent is told the path is unavailable.
 
-Your API key is stored only in `~/.myagent/config.json` (outside the app bundle and outside the source tree) and is never sent anywhere except your chosen LLM provider.
-
----
-
-## Dev setup
-
-**Requirements:** Python 3.11+, Node.js 18+, Rust (stable), Google Chrome
-
-**First time only:**
-
-```cmd
-git clone https://github.com/harshgupta-23/forge.git
-cd forge
-setup.bat
-```
-
-`setup.bat` creates the venv, installs all Python and Node dependencies, installs Playwright browsers, and copies `config.template.json` → `config.json`. Then open Settings in the app and enter your API key and your preferred output directory for agent-created files.
-
-**Every time after that:**
-
-```cmd
-start.bat
-```
-
-`start.bat` starts the Python backend in a separate terminal, waits 3 seconds, then launches `npx tauri dev`.
-
-### Build the MSI installer
-
-```cmd
-npm run build
-```
-
-Output: `src-tauri\target\release\bundle\msi\`
+Your API key is stored only in `~/.myagent/config.json` and is never sent anywhere except your chosen LLM provider.
 
 ---
 
@@ -222,17 +196,14 @@ Output: `src-tauri\target\release\bundle\msi\`
 | `python_backend/app.py` | ✅ | WebSocket sidecar |
 | `python_backend/tools/` | ✅ | Built-in tools |
 | `python_backend/requirements.txt` | ✅ | Dependencies |
-| `python_backend/agent.spec` | ✅ | PyInstaller spec |
 | `config.template.json` | ✅ | Safe default config |
 | `start.bat` | ✅ | Dev launcher |
+| `setup.bat` | ✅ | First-time setup |
 | `config.json` | ❌ | Contains your API key |
 | `python_backend/.venv/` | ❌ | Virtual environment |
-| `python_backend/dist/` | ❌ | PyInstaller output |
-| `python_backend/build/` | ❌ | PyInstaller temp |
 | `python_backend/chrome_profile/` | ❌ | Browser session data |
 | `node_modules/` | ❌ | npm packages |
 | `src-tauri/target/` | ❌ | Rust build output |
-| `future features.txt` | ❌ | Personal notes |
 
 ---
 
@@ -242,9 +213,6 @@ Output: `src-tauri\target\release\bundle\msi\`
 - **Python scripts only** — `run_local_python_script` runs Python only. PowerShell or Bash tasks need either a Python `subprocess` wrapper or a dedicated custom tool.
 - **No branching history** — history is linear (clear, undo one turn, summarise). There is no checkpoint system to branch from a mid-conversation state or fully restore an earlier point if a long tool chain fails deep into execution.
 - **Single user, local only** — the WebSocket sidecar runs on localhost and is designed for one active session at a time.
-- **`pip_install` requires system Python** — in the MSI build, the bundled exe cannot install packages into itself. `pip_install` finds and uses the user's system Python instead, so Python must be installed and on PATH for this tool to work.
-
-
 
 ---
 
