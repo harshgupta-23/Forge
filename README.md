@@ -65,7 +65,7 @@ On first launch, Forge will automatically download the Chromium browser in the b
 **First time only:**
 
 ```cmd
-git clone https://github.com/harshgupta-23/forge.git
+git clone https://github.com/harshgupta-23/Forge.git
 cd forge
 setup.bat
 ```
