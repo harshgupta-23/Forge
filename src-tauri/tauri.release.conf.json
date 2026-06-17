@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "resources": {
+      "resources/python/": "python/",
+      "resources/python_backend/": "python_backend/",
+      "resources/config.template.json": "config.template.json"
+    }
+  }
+}

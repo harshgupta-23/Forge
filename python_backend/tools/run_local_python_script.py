@@ -4,6 +4,7 @@ import sys
 import tempfile
 import traceback
 import subprocess
+import pathlib
 from pathlib import Path
 from datetime import datetime
 from langchain_core.tools import tool
@@ -23,7 +24,11 @@ def _write_audit_log(script_code: str) -> Path:
 
 def _run_subprocess(cmd: list[str], timeout: int = 45) -> str:
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        pip_install_dir = str(pathlib.Path.home() / ".myagent" / "python-packages")
+        env = os.environ.copy()
+        existing = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = pip_install_dir + (os.pathsep + existing if existing else "")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
         parts = []
         if result.stdout.strip():
             parts.append(f"STDOUT:\n{result.stdout.strip()}")

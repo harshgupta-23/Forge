@@ -6,6 +6,7 @@ module-load time (matching how agent.py was designed).
 """
 
 import os
+import sys
 import json
 import asyncio
 import threading
@@ -17,11 +18,30 @@ HOME = pathlib.Path.home()
 CONFIG_PATH  = HOME / ".myagent" / "config.json"
 SESSION_DIR  = HOME / ".myagent" / "agent_sessions"
 SCRIPTS_DIR  = HOME / ".agent_scripts"
+# Embedded Python lives under Program Files, which standard (non-admin)
+# users can't write to. Playwright's browser binaries must be cached
+# somewhere writable, so we redirect them into the user's profile.
+PLAYWRIGHT_BROWSERS_DIR = HOME / ".myagent" / "playwright-browsers"
+# Same problem applies to packages the agent installs at runtime via the
+# pip_install tool — the embedded interpreter's own site-packages is
+# read-only post-install. Packages always go here instead, and this
+# directory is added to sys.path below so they're importable immediately.
+PIP_INSTALL_DIR = HOME / ".myagent" / "python-packages"
 
 # Create dirs on startup
 CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
 SESSION_DIR.mkdir(parents=True, exist_ok=True)
 SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
+PLAYWRIGHT_BROWSERS_DIR.mkdir(parents=True, exist_ok=True)
+PIP_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+
+# Must be set/added before anything imports playwright or a runtime-installed
+# package (including agent.py's tools), so the redirection actually takes effect.
+os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(PLAYWRIGHT_BROWSERS_DIR)
+sys.path.insert(0, str(PIP_INSTALL_DIR))
+
+_existing_pypath = os.environ.get("PYTHONPATH", "")
+os.environ["PYTHONPATH"] = str(PIP_INSTALL_DIR) + (os.pathsep + _existing_pypath if _existing_pypath else "")
 
 # ─── Config helpers ───────────────────────────────────────────────────────────
 
@@ -56,6 +76,31 @@ def apply_config_to_env(cfg: dict) -> None:
 # ─── Apply config BEFORE importing agent ──────────────────────────────────────
 
 apply_config_to_env(load_config())
+
+def _ensure_playwright_chromium() -> None:
+    """
+    The installer ships without a bundled browser (chosen to keep the MSI
+    small). On first run — and only on first run — download Chromium into
+    PLAYWRIGHT_BROWSERS_DIR. Runs in a background thread so server startup
+    isn't blocked; browser_action will simply fail with Playwright's normal
+    "executable doesn't exist" error if a user tries it before this finishes.
+    """
+    marker = PLAYWRIGHT_BROWSERS_DIR / ".chromium_installed"
+    if marker.exists():
+        return
+    try:
+        import subprocess, sys
+        print("[app] First run: downloading Chromium for browser_action...")
+        subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            check=True,
+        )
+        marker.touch()
+        print("[app] Chromium download complete.")
+    except Exception as exc:
+        print(f"[app] Chromium download failed, will retry next launch: {exc}")
+
+threading.Thread(target=_ensure_playwright_chromium, daemon=True).start()
 
 from langchain_core.messages import HumanMessage
 from agent import stream_final_response, count_tokens, summarise_history

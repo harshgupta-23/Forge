@@ -1,4 +1,12 @@
 @echo off
+:: ============================================================
+::  Forge - Dev launcher (every run after setup.bat)
+::  Manually starts python.exe from the dev venv, then launches
+::  Tauri in dev mode. The embedded-sidecar auto-spawn in lib.rs
+::  is gated to release builds only, so it stays out of the way
+::  here - this script remains the single thing starting Python
+::  during development.
+:: ============================================================
 echo Starting Agent...
 
 :: Start Python backend in its own window

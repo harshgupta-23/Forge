@@ -17,6 +17,7 @@ package-lock.json
 
 # ── Tauri build output ────────────────────────────────────────────────────────
 src-tauri/target/
+src-tauri/resources/
 
 # ── Session and agent data ────────────────────────────────────────────────────
 agent_sessions/
@@ -29,3 +30,6 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# ── Other scripts ─────────────────────────────────────────────────────────────
+remove.bat
