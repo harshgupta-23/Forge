@@ -33,11 +33,11 @@ echo [2/5] Installing Python dependencies...
 if errorlevel 1 ( echo ERROR: pip install failed. & pause & exit /b 1 )
 
 :: Playwright — installed to the same path app.py redirects to at
-:: runtime (~/.myagent/playwright-browsers), so dev and the eventual
+:: runtime (~/.forge/playwright-browsers), so dev and the eventual
 :: packaged app share one browser cache instead of two separate downloads.
 echo.
 echo [3/5] Installing Playwright browsers...
-set "PLAYWRIGHT_BROWSERS_PATH=%USERPROFILE%\.myagent\playwright-browsers"
+set "PLAYWRIGHT_BROWSERS_PATH=%USERPROFILE%\.forge\playwright-browsers"
 .venv\Scripts\playwright install chromium
 if errorlevel 1 ( echo ERROR: Playwright install failed. & pause & exit /b 1 )
 if not exist "%PLAYWRIGHT_BROWSERS_PATH%" mkdir "%PLAYWRIGHT_BROWSERS_PATH%"
@@ -57,7 +57,7 @@ echo  After the app opens, you can close it.
 echo  Future launches use start.bat instead.
 echo.
 echo  config.json is created automatically on first
-echo  launch at %%USERPROFILE%%\.myagent\config.json
+echo  launch at %%USERPROFILE%%\.forge\config.json
 echo  - open Settings in the app to add your API key.
 echo ========================================
 cd /d %~dp0

@@ -24,7 +24,7 @@ def _write_audit_log(script_code: str) -> Path:
 
 def _run_subprocess(cmd: list[str], timeout: int = 45) -> str:
     try:
-        pip_install_dir = str(pathlib.Path.home() / ".myagent" / "python-packages")
+        pip_install_dir = str(pathlib.Path.home() / ".forge" / "python-packages")
         env = os.environ.copy()
         existing = env.get("PYTHONPATH", "")
         env["PYTHONPATH"] = pip_install_dir + (os.pathsep + existing if existing else "")

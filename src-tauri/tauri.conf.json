@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Forge",
   "version": "1.0.0",
-  "identifier": "com.localagent.myagent",
+  "identifier": "com.localagent.forge",
   "build": {
     "frontendDist": "../src"
   },

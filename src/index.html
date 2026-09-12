@@ -4,22 +4,57 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent System Dashboard</title>
+  <link id="hljs-theme" rel="stylesheet" href="vendor/hljs-dark.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="dark-theme">
 <div id="app-container">
+  <div id="connection-banner" class="hidden">
+    ⚠ Connection lost — the backend may have stopped.
+    <button id="btn-reconnect">Reload</button>
+  </div>
   <header>
     <h2>🤖 Forge — Local AI Assistant</h2>
-    <button id="btn-clear">🗑 Clear</button>
+    <button id="btn-new-session" title="Start a new session">➕ New Session</button>
     <button id="btn-undo">↩ Undo</button>
     <button id="btn-summarise">⚡ Summarise</button>
+    <button id="btn-tree-view">🌿 Tree View</button>
+    <button id="btn-fetch-session">📂 Fetch Previous Session</button>
     <button id="toggle-settings">⚙ Settings</button>
   </header>
 
+  <div id="token-usage-bar">
+    <span id="tokens-5h" title="Tokens used in the last 5 hours">5h: –</span>
+    <span id="tokens-24h" title="Tokens used in the last 24 hours">24h: –</span>
+  </div>
+  
+  <div id="tree-view-panel" class="hidden">
+    <div class="panel-header">
+      <h3 style="margin: 0; font-size: 16px;">🌿 Conversation Branches</h3>
+      <button id="close-tree-view" style="padding: 2px 8px; font-size: 14px;">✕</button>
+    </div>
+    <div id="tree-container"></div>
+    <div id="tree-resize-handle"></div>
+  </div>
+
+  <div id="session-picker-panel" class="hidden">
+    <div class="panel-header">
+      <h3 style="margin: 0; font-size: 16px;">📂 Previous Sessions</h3>
+      <button id="close-session-picker" style="padding: 2px 8px; font-size: 14px;">✕</button>
+    </div>
+    <div id="session-list-container"></div>
+  </div>
+
   <div id="settings-panel" class="hidden">
-    <h3>Environment Configuration</h3>
-    <label>Gemini API Key:
-      <input type="password" id="cfg-key" placeholder="AIStudio Key">
+    <div class="panel-header">
+      <h3 style="margin: 0;">Environment Configuration</h3>
+      <button id="close-settings" style="padding: 2px 8px; font-size: 14px;">✕</button>
+    </div>
+    <label>API Key:
+      <input type="password" id="cfg-key" placeholder="Enter API Key">
+    </label>
+    <label>API Base URL:
+      <input type="text" id="cfg-base" placeholder="https://openrouter.ai/api/v1">
     </label>
     <label>Active Engine Model:
       <input type="text" id="cfg-model">
@@ -51,9 +86,13 @@
   <div id="input-area">
     <input type="text" id="user-input" placeholder="Issue localized platform execution command...">
     <button id="send-btn">Execute</button>
+    <button id="btn-stop" class="hidden">⏹ Stop</button>
   </div>
 </div>
 
+<script src="vendor/marked.min.js"></script>
+<script src="vendor/highlight.min.js"></script>
+<script src="md-render.js"></script>
 <script src="main.js"></script>
 </body>
 </html>

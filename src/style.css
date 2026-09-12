@@ -161,11 +161,14 @@ button:active {
 #btn-clear:active { background-color: var(--danger); color: #fff; }
 
 #btn-undo:hover { 
-  background-color: rgba(245, 158, 11, 0.15);
-  border-color: var(--warning); 
-  color: #ffd06b; 
+  background-color: rgba(236, 72, 153, 0.15); /* Translucent pink/magenta tint */
+  border-color: #ec4899;                        /* Bright pink border */
+  color: #f472b6;                              /* Lighter pink text */
 }
-#btn-undo:active { background-color: var(--warning); color: #fff; }
+#btn-undo:active { 
+  background-color: #ec4899; 
+  color: #fff; 
+}
 
 #btn-summarise:hover { 
   background-color: rgba(6, 182, 212, 0.15);
@@ -180,6 +183,83 @@ button:active {
   color: #6ba4ff;
 }
 #toggle-settings:active { background-color: var(--secondary); color: #fff; }
+
+/* --- New Session Button Custom Styling (Purple Tint) --- */
+#btn-new-session:hover { 
+  background-color: rgba(168, 85, 247, 0.15); /* Translucent purple tint */
+  border-color: #a855f7;                        /* Purple border */
+  color: #c084fc;                              /* Lighter purple text */
+}
+#btn-new-session:active { 
+  background-color: #a855f7; 
+  color: #fff; 
+}
+
+/* --- Fetch Previous Session Button Custom Styling (Yellow Tint) --- */
+#btn-fetch-session:hover { 
+  background-color: rgba(245, 158, 11, 0.15); /* Tint using warning color alpha */
+  border-color: var(--warning); 
+  color: #ffd06b;                              /* Lighter yellow text */
+}
+#btn-fetch-session:active { 
+  background-color: var(--warning); 
+  color: #fff; 
+}
+
+/* ── Token Usage Bar ─────────────────────────────────────────── */
+#token-usage-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+#token-usage-bar::before {
+  content: 'Tokens used in last:';
+  font-size: 11px;
+  opacity: 0.5;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+#tokens-5h,
+#tokens-24h {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* dark theme */
+.dark-theme #tokens-5h {
+  background: rgba(0, 200, 120, 0.1);
+  border: 1px solid rgba(0, 200, 120, 0.25);
+  color: #4ecf8f;
+}
+.dark-theme #tokens-24h {
+  background: rgba(80, 160, 255, 0.1);
+  border: 1px solid rgba(80, 160, 255, 0.25);
+  color: #70aaff;
+}
+
+/* light theme */
+.light-theme #tokens-5h {
+  background: rgba(0, 160, 90, 0.08);
+  border: 1px solid rgba(0, 160, 90, 0.25);
+  color: #1a8c55;
+}
+.light-theme #tokens-24h {
+  background: rgba(30, 100, 220, 0.08);
+  border: 1px solid rgba(30, 100, 220, 0.25);
+  color: #1a5fd4;
+}
 
 /* --- Main Action Inputs and Buttons --- */
 #send-btn {
@@ -255,4 +335,350 @@ input[type="text"]:focus, input[type="password"]:focus, select:focus {
   color: var(--text-muted);
   font-size: 13px;
   font-weight: 500;
+}
+
+/* 🌿 Tree View Panel Styles */
+#tree-view-panel {
+  position: fixed;
+  top: 80px;
+  left: 40px;
+  width: 520px;
+  height: 420px;
+  min-width: 280px;
+  min-height: 200px;
+  z-index: 1000;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  /* animation base state */
+  opacity: 1;
+  transform: translateY(0);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+}
+
+#tree-view-panel.hidden {
+  display: block !important;
+  opacity: 0;
+  transform: translateY(-20px);
+  pointer-events: none;
+}
+
+.dark-theme #tree-view-panel {
+  background: var(--bg-panel);
+  border: 1px solid rgba(255,255,255,0.12);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.light-theme #tree-view-panel {
+  background: var(--bg-panel);
+  border: 1px solid rgba(0,0,0,0.12);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+}
+
+/* header acts as drag handle */
+#tree-view-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-color);
+}
+#tree-view-panel .panel-header:active { cursor: grabbing; }
+
+/* tree canvas fills remaining space */
+#tree-container {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* resize handle — bottom-right corner */
+#tree-resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  z-index: 10;
+  opacity: 0.4;
+  background: linear-gradient(135deg, transparent 50%, #888 50%);
+  border-bottom-right-radius: 10px;
+}
+#tree-resize-handle:hover { opacity: 0.9; }
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 12px;
+  margin-bottom: 15px;
+}
+
+#tree-container {
+  flex-grow: 1;
+  overflow: auto; /* scroll both horizontally and vertically */
+  padding: 10px;
+  background: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+/* n8n-style tree branching layout */
+.tree-branch {
+  display: flex;
+  align-items: center;
+  gap: 80px; /* horizontal gap between parent and children */
+  position: relative;
+}
+
+.tree-children-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px; /* vertical gap between sibling branches */
+  justify-content: center;
+  position: relative;
+}
+
+.tree-node-card {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  width: 220px; /* fixed width for n8n cards */
+  flex-shrink: 0;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 3;
+}
+
+.tree-node-card:hover {
+  border-color: var(--secondary);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+/* Highlight styles */
+.tree-node-card.active-tip {
+  border-color: var(--accent);
+  background: rgba(0, 250, 154, 0.06);
+  box-shadow: 0 0 12px rgba(0, 250, 154, 0.25);
+}
+
+body.light-theme .tree-node-card.active-tip {
+  background: rgba(0, 122, 255, 0.06);
+  box-shadow: 0 0 12px rgba(0, 122, 255, 0.25);
+  border-color: var(--accent);
+}
+
+.tree-node-card.active-path {
+  border-color: var(--secondary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.tree-node-card.inactive-branch {
+  opacity: 0.6;
+}
+
+/* Internal elements */
+.node-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.node-type-badge {
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--border-color);
+  color: var(--text-muted);
+}
+
+.node-type-badge.summary {
+  background: rgba(6, 182, 212, 0.2);
+  color: var(--info);
+}
+
+.node-label-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(59, 130, 246, 0.15);
+  color: #6ba4ff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+body.light-theme .node-label-badge {
+  background: rgba(0, 122, 255, 0.15);
+  color: var(--accent);
+}
+
+.active-tip .node-label-badge {
+  background: rgba(0, 250, 154, 0.15);
+  color: var(--accent);
+}
+
+body.light-theme .active-tip .node-label-badge {
+  background: rgba(0, 122, 255, 0.15);
+  color: var(--accent);
+}
+
+.node-content-excerpt {
+  font-size: 12.5px;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.node-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.tree-node-card:hover .node-actions {
+  opacity: 1;
+}
+
+.node-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.node-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-main);
+}
+
+#btn-tree-view:hover {
+  background-color: rgba(0, 250, 154, 0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+body.light-theme #btn-tree-view:hover {
+  background-color: rgba(0, 122, 255, 0.1);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+#btn-tree-view:active {
+  background-color: var(--accent);
+  color: #fff;
+}
+
+/* ── Markdown rendered agent bubbles ─────────────────────────── */
+.bubble-body p        { margin: 0.3em 0; }
+.bubble-body ul,
+.bubble-body ol       { margin: 0.4em 0; padding-left: 1.4em; }
+.bubble-body li       { margin: 0.2em 0; }
+.bubble-body h1,
+.bubble-body h2,
+.bubble-body h3       { margin: 0.6em 0 0.3em; font-size: 1em; font-weight: 600; }
+.bubble-body table    { border-collapse: collapse; margin: 0.5em 0; font-size: 0.9em; }
+.bubble-body th,
+.bubble-body td       { border: 1px solid #555; padding: 4px 8px; }
+.bubble-body code     { font-family: 'Consolas', 'Fira Code', monospace;
+                        font-size: 0.88em; padding: 1px 4px;
+                        border-radius: 3px; }
+
+/* Inline code (not inside a pre) */
+.dark-theme  .bubble-body code { background: #2a2a2a; color: #e06c75; }
+.light-theme .bubble-body code { background: #f0f0f0; color: #c7254e; }
+
+/* ── Code block wrapper ───────────────────────────────────────── */
+.code-block-wrapper   { position: relative; margin: 0.6em 0; }
+.code-block-wrapper pre {
+  margin: 0;
+  border-radius: 6px;
+  max-height: 400px;        /* cap height — adjust to taste */
+  overflow-y: auto;         /* vertical scroll only when needed */
+  overflow-x: auto;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 6px; right: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+.copy-btn:hover         { opacity: 1; }
+.dark-theme  .copy-btn  { background: #444; color: #ccc; }
+.light-theme .copy-btn  { background: #ddd; color: #333; }
+
+/* ── Message bubble containers ───────────────────────────────── */
+.msg-bubble.agent-response {
+  background: rgba(0, 255, 100, 0.07);
+  border: 1px solid rgba(0, 255, 100, 0.2);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 6px 0;
+}
+
+.msg-bubble.user-query {
+  background: rgba(255, 80, 80, 0.08);
+  border: 1px solid rgba(255, 80, 80, 0.22);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin: 6px 0;
+}
+
+/* inline code — stays as-is */
+.bubble-body code {
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 0.88em;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.dark-theme  .bubble-body code { background: #2a2a2a; color: #e06c75; }
+.light-theme .bubble-body code { background: #f0f0f0; color: #c7254e; }
+
+/* block code — black box, overrides the above */
+.bubble-body pre {
+  background: #0d0d0d !important;   /* near-black regardless of theme */
+  border-radius: 6px;
+  padding: 12px 14px;
+  max-height: 400px;
+  overflow-y: auto;
+  overflow-x: auto;
+}
+
+.bubble-body pre code {
+  background: transparent !important;  /* cancel the inline-code bg inside a block */
+  color: inherit;
+  padding: 0;
+  font-size: 0.88em;
 }

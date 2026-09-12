@@ -36,7 +36,7 @@ The UI is a Tauri desktop app (Rust shell + web frontend). The backend is a Pyth
 - **Drag-and-drop file attachment** — drag any file onto the UI to attach its path to the session
 - **Absolute path attachment** — paste a file path directly to register it without copying the file
 - **History management** — clear, undo (last turn), or summarise history to compress token usage
-- **Session persistence** — every session is saved to `~/.myagent/agent_sessions/` as a timestamped `.txt` file including start time, end time, duration, and total token count
+- **Session persistence** — every session is saved to `~/.forge/agent_sessions/` as a timestamped `.txt` file including start time, end time, duration, and total token count
 - **Dual history system** — active history (passed to LLM, can be cleared/undone/summarised) is kept separate from the permanent session log (append-only, never modified)
 - **Settings UI** — change API key, model, working directory, and theme without touching config files
 - **Theme support** — dark and light mode
@@ -56,7 +56,7 @@ There are two ways to use Forge: install the pre-built MSI (end users), or run f
 3. Launch **Forge** from the Start Menu
 4. Open **Settings** (⚙ button, top right), enter your API key, and click **Commit Setup Changes**
 
-On first launch, Forge will automatically download the Chromium browser in the background for the `browser_action` tool. This is a one-time download into `~/.myagent/playwright-browsers/`.
+On first launch, Forge will automatically download the Chromium browser in the background for the `browser_action` tool. This is a one-time download into `~/.forge/playwright-browsers/`.
 
 ### Option B — Run from source (developers)
 
@@ -112,7 +112,7 @@ The finished `.msi` is output to `src-tauri/target/release/bundle/msi/`.
 4. Set your **output directory** — where the agent saves files it creates
 5. Click **Commit Setup Changes**
 
-Your config is saved to `~/.myagent/config.json` — never inside the source tree.
+Your config is saved to `~/.forge/config.json` — never inside the source tree.
 
 ### Supported API providers
 
@@ -167,7 +167,7 @@ def my_tool(input: str) -> str:
 
 Restart Forge and the tool is live. No other changes needed anywhere.
 
-You can also drop tools into `~/.myagent/tools/` — these are loaded at runtime and kept separate from the source tree. This works in both the dev setup and the MSI install.
+You can also drop tools into `~/.forge/tools/` — these are loaded at runtime and kept separate from the source tree. This works in both the dev setup and the MSI install.
 
 ### Rules for custom tools
 
@@ -216,7 +216,7 @@ def is_path_protected(file_path: str) -> bool:
 
 This prevents the agent from reading or writing your API key (`config.json`), any `.env` file, or any file inside the `python_backend/` source directory — even if instructed to do so by a prompt injection or a malicious webpage visited via `browser_action`. Attempts to access protected paths are blocked and the agent is told the path is unavailable.
 
-Your API key is stored only in `~/.myagent/config.json` and is never sent anywhere except your chosen LLM provider.
+Your API key is stored only in `~/.forge/config.json` and is never sent anywhere except your chosen LLM provider.
 
 ---
 

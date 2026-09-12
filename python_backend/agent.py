@@ -1,6 +1,5 @@
 """
-agent.py — LangGraph autonomous agent (Gemini API backend)
-Uses google-genai SDK (new) — replaces deprecated google-generativeai.
+agent.py — LangGraph autonomous agent (API backend)
 """
 
 import os
@@ -34,8 +33,8 @@ from tools import ALL_TOOLS
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-GEMINI_MODEL   = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+API_KEY = os.environ.get("API_KEY", "")
+MODEL   = os.environ.get("MODEL", "gemini-2.0-flash")
 _WORK_DIR      = os.environ.get("AGENT_WORK_DIR", "")
 
 # ─── State ────────────────────────────────────────────────────────────────────
@@ -96,29 +95,70 @@ if _WORK_DIR:
 
 def _get_client():
     from openai import OpenAI
-    
-    # Example using OpenRouter (or change base_url to http://localhost:11434/v1 for Ollama)
-    base_url = os.environ.get("GEMINI_API_BASE", "https://openrouter.ai/api/v1") 
-    api_key = os.environ.get("GEMINI_API_KEY", "")
-    
+    from urllib.parse import urlparse, urlunparse
+
+    # 1. Grab environment variables with clean default fallbacks
+    base_url = os.environ.get("API_BASE", "https://openrouter.ai/api/v1").strip()
+    api_key = os.environ.get("API_KEY", "").strip()
+
     if not api_key:
         raise RuntimeError(
-            "CRITICAL: GEMINI_API_KEY environment variable is missing or blank.\n"
-            "Double-check your config.json file values."
-        )    
-    
+            "CRITICAL: API_KEY environment variable is missing or blank.\n"
+            "Double-check your configuration values."
+        )
+
+    # 2. Check if the target host is Google's OpenAI compatibility layer
+    parsed_url = urlparse(base_url)
+    is_google = "generativelanguage.googleapis.com" in (parsed_url.netloc or parsed_url.path)
+
+    if is_google:
+        # Google AI Studio OpenAI shim requires the key appended directly inside the URL query string.
+        # Format string becomes: https://generativelanguage.googleapis.com/v1beta/openai?key=AIzaSy...
+        
+        # Clean the path to prevent double slashes before adding query params
+        clean_path = parsed_url.path.rstrip("/")
+        
+        # Build the new URL injecting the key parameter cleanly
+        new_query = f"key={api_key}"
+        base_url = urlunparse((
+            parsed_url.scheme,
+            parsed_url.netloc,
+            clean_path,
+            parsed_url.params,
+            new_query,
+            parsed_url.fragment
+        ))
+        
+        # The OpenAI SDK throws an validation error if api_key is empty. 
+        # Pass a dummy string; Google ignores the Bearer header entirely when the query param is set.
+        sdk_key = "ignored-by-google-via-query-param"
+        extra_headers = {}
+    else:
+        # Standard OpenAI-compliant providers (OpenRouter, Groq, Together, Ollama)
+        sdk_key = api_key
+        extra_headers = {}
+        
+        # Add openrouter metadata helpers if matching
+        if "openrouter.ai" in parsed_url.netloc:
+            extra_headers = {
+                "HTTP-Referer": "http://localhost:8765",
+                "X-Title": "Forge Agent",
+            }
+
     return OpenAI(
         base_url=base_url,
-        api_key=api_key,
-        default_headers={
-            "HTTP-Referer": "http://localhost:8765", 
-            "X-Title": "Forge",
-        }
+        api_key=sdk_key,
+        default_headers=extra_headers,
     )
 
 
 def _build_contents(messages: list, attached_files: dict) -> list:
-    """Convert LangGraph messages to standard OpenAI/Gemma format."""
+    """Convert LangGraph messages to standard OpenAI/Gemma format.
+
+    Gemma 4 enforces strict role alternation (system → user → assistant → user …).
+    Consecutive messages with the same role are merged into one so the API
+    never sees two user or two assistant turns back-to-back.
+    """
 
     file_note = ""
     if attached_files:
@@ -127,35 +167,54 @@ def _build_contents(messages: list, attached_files: dict) -> list:
             lines.append(f"  {name} → {path}")
         file_note = "\n".join(lines) + "\n\n"
 
-    contents = []
+    raw = []
 
-    # Gemma handles system instructions best as the very first message in the array
-    contents.append({"role": "system", "content": SYSTEM_PROMPT})
+    # System prompt always goes first — Gemma honours it here
+    raw.append({"role": "system", "content": SYSTEM_PROMPT})
 
     first_user = True
     for msg in messages:
         if isinstance(msg, HumanMessage):
             text = (file_note + msg.content) if first_user and file_note else msg.content
             first_user = False
-            contents.append({"role": "user", "content": text})
-            
+            raw.append({"role": "user", "content": text})
+
         elif isinstance(msg, AIMessage):
-            # CRITICAL CHANGE: "model" becomes "assistant"
-            contents.append({"role": "assistant", "content": msg.content})
-            
+            raw.append({"role": "assistant", "content": msg.content or " "})
+
         elif isinstance(msg, ToolMessage):
             name = getattr(msg, "name", "tool")
-            contents.append({"role": "user", "content": f"[TOOL RESULT: {name}]\n{msg.content}"})
-    
+            raw.append({"role": "user", "content": f"[TOOL RESULT: {name}]\n{msg.content}"})
+
+    # ── Merge consecutive same-role turns (Gemma4 strict alternation) ──────
+    contents: list = []
+    for entry in raw:
+        if contents and contents[-1]["role"] == entry["role"]:
+            # Append to the previous message with a separator
+            sep = "\n\n" if entry["role"] == "user" else "\n"
+            contents[-1] = {
+                "role": entry["role"],
+                "content": contents[-1]["content"] + sep + entry["content"],
+            }
+        else:
+            contents.append(dict(entry))
+
+    # ── Gemma requires the turn sequence after system to start with "user" ─
+    # If somehow the first non-system message is "assistant", prepend a dummy.
+    non_sys = [m for m in contents if m["role"] != "system"]
+    if non_sys and non_sys[0]["role"] == "assistant":
+        sys_part = [m for m in contents if m["role"] == "system"]
+        contents = sys_part + [{"role": "user", "content": "[start]"}] + non_sys
+
     return contents
 
 
-def _call_gemini(messages: list, attached_files: dict) -> str:
+def _call(messages: list, attached_files: dict) -> str:
     client   = _get_client()
     contents = _build_contents(messages, attached_files)
     try:
         response = client.chat.completions.create(
-            model=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+            model=os.environ.get("MODEL", "gemini-2.0-flash"),
             messages=contents
         )
         return _strip_thoughts(response.choices[0].message.content)
@@ -163,27 +222,41 @@ def _call_gemini(messages: list, attached_files: dict) -> str:
         return f"[API error]: {exc}"
 
 
-def _stream_gemini(messages: list, attached_files: dict):
+def _stream(messages: list, attached_files: dict, stop_event=None):
     client   = _get_client()
     contents = _build_contents(messages, attached_files)
+    full_text = ""
+    stream = None
     try:
         # Buffer full response so <thought> blocks can be stripped cleanly
-        full_text = ""
         stream = client.chat.completions.create(
-            model=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+            model=os.environ.get("MODEL", "gemini-2.0-flash"),
             messages=contents,
             stream=True
         )
         for chunk in stream:
+            # Check for cancellation on every chunk, not just after the
+            # whole response has already been downloaded — otherwise Stop
+            # has no effect until the model finishes generating anyway.
+            if stop_event and stop_event.is_set():
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+                break
             token = chunk.choices[0].delta.content
             if token:
                 full_text += token
-        # Strip thought blocks then yield word-by-word for streaming feel
-        words = _strip_thoughts(full_text).split(' ')
-        for i, word in enumerate(words):
-            yield word + ('' if i == len(words) - 1 else ' ')
     except Exception as exc:
         yield f"[API error]: {exc}"
+        return
+
+    # Strip thought blocks then yield word-by-word for streaming feel
+    words = _strip_thoughts(full_text).split(' ')
+    for i, word in enumerate(words):
+        if stop_event and stop_event.is_set():
+            return
+        yield word + ('' if i == len(words) - 1 else ' ')
 
 # ─── Tool parsing ─────────────────────────────────────────────────────────────
 
@@ -217,7 +290,7 @@ def agent_node(state: AgentState) -> dict:
     attached = state.get("attached_files", {})
 
     for _ in range(10):
-        response = _call_gemini(messages, attached)
+        response = _call(messages, attached)
         tools    = _parse_tools(response)
 
         if not tools:
@@ -247,7 +320,7 @@ app = build_graph()
 
 # ─── Streaming helper (used by main.py) ───────────────────────────────────────
 
-def stream_final_response(state: dict):
+def stream_final_response(state: dict, stop_event=None):
     """
     Runs tool loop, emits live status lines while tools execute,
     then streams the final answer token-by-token.
@@ -265,12 +338,17 @@ def stream_final_response(state: dict):
     attached = state.get("attached_files", {})
 
     for round_num in range(10):
+
+        if stop_event and stop_event.is_set():
+            yield ("cancelled", messages)
+            return
+        
         # ── Phase 1: call LLM (blocking) — show spinner while waiting ────────
         llm_result   = [None]
         llm_done_evt = threading.Event()
 
         def _call_llm():
-            llm_result[0] = _call_gemini(messages, attached)
+            llm_result[0] = _call(messages, attached)
             llm_done_evt.set()
 
         t = threading.Thread(target=_call_llm, daemon=True)
@@ -280,6 +358,9 @@ def stream_final_response(state: dict):
         dots = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
         i = 0
         while not llm_done_evt.wait(timeout=0.12):
+            if stop_event and stop_event.is_set():
+                yield ("cancelled", messages)
+                return
             yield ("status", f"\r\033[K{dots[i % len(dots)]}  Thinking…")
             i += 1
         yield ("status", "\r\033[K")   # clear the spinner line
@@ -289,8 +370,23 @@ def stream_final_response(state: dict):
 
         if not tools:
             # ── Phase 2: stream final answer ─────────────────────────────────
-            for chunk in _stream_gemini(messages, attached):
+            partial = ""
+            for chunk in _stream(messages, attached, stop_event=stop_event):
+                if stop_event and stop_event.is_set():
+                    messages.append(AIMessage(content=partial.strip() or "[stopped before any output]"))
+                    yield ("cancelled", messages)
+                    return
+                partial += chunk
                 yield ("token", chunk)
+
+            # _stream can also stop itself mid-way (closing the
+            # network stream) and return early with no more chunks —
+            # catch that case too so we don't fall through and treat a
+            # cancelled response as a normal completed one.
+            if stop_event and stop_event.is_set():
+                messages.append(AIMessage(content=partial.strip() or "[stopped before any output]"))
+                yield ("cancelled", messages)
+                return
             messages.append(AIMessage(content=response))
             yield ("done", messages)
             return
@@ -298,6 +394,9 @@ def stream_final_response(state: dict):
         # ── Phase 3: execute tools with live status ───────────────────────────
         messages.append(AIMessage(content=response))
         for tc in tools:
+            if stop_event and stop_event.is_set():
+                yield ("cancelled", messages)
+                return
             tool_name  = tc.get("name", "tool")
             args_short = _fmt_args(tc.get("args", {}))
             yield ("tool_start", f"⚙  {tool_name}({args_short})")
@@ -315,6 +414,9 @@ def stream_final_response(state: dict):
 
             i = 0
             while not tool_done.wait(timeout=0.15):
+                if stop_event and stop_event.is_set():
+                    yield ("cancelled", messages)
+                    return
                 yield ("status", f"\r\033[K  {dots[i % len(dots)]}  Running {tool_name}…")
                 i += 1
             yield ("status", "\r\033[K")  # clear
@@ -387,7 +489,7 @@ def summarise_history(messages: list, attached_files: dict) -> list:
             transcript_lines.append(f"TOOL({name}): {msg.content[:300]}")
 
     summary_prompt = "\n".join(transcript_lines)
-    summary_text   = _call_gemini(
+    summary_text   = _call(
         [HumanMessage(content=summary_prompt)], attached_files
     )
 

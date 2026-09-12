@@ -19,7 +19,7 @@ for _, module_name, _ in pkgutil.iter_modules([_tools_dir]):
 
 # ── User custom tools (loaded from disk at runtime) ───────────────────────
 # Works for both dev and MSI users
-CUSTOM_TOOLS_DIR = Path.home() / ".myagent" / "tools"
+CUSTOM_TOOLS_DIR = Path.home() / ".forge" / "tools"
 CUSTOM_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
 
 for py_file in CUSTOM_TOOLS_DIR.glob("*.py"):

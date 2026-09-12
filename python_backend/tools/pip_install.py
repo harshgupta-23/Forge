@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 # Mirrors PIP_INSTALL_DIR in app.py (kept independent rather than imported
 # from it, to avoid re-importing app.py as a second module distinct from
 # the running __main__ instance, which would re-run its startup code).
-PIP_INSTALL_DIR = pathlib.Path.home() / ".myagent" / "python-packages"
+PIP_INSTALL_DIR = pathlib.Path.home() / ".forge" / "python-packages"
 PIP_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
 
 @tool
