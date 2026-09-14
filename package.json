@@ -5,6 +5,7 @@
   "author": "Harsh Gupta",
   "license": "Apache-2.0",
   "scripts": {
+    "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
     "test": "echo \"No tests specified\" && exit 1"
