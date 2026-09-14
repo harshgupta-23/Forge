@@ -1,0 +1,95 @@
+name: Build Linux Packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.1.0)'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-tauri:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libfuse2 \
+            curl \
+            wget \
+            rsync
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Pre-cache AppImage packaging tools
+        run: |
+          mkdir -p ~/.cache/tauri
+          curl -L --retry 5 --connect-timeout 30 -o ~/.cache/tauri/AppRun-x86_64 https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64
+          curl -L --retry 5 --connect-timeout 30 -o ~/.cache/tauri/linuxdeploy-x86_64.AppImage https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage
+          curl -L --retry 5 --connect-timeout 30 -o ~/.cache/tauri/linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          curl -L --retry 5 --connect-timeout 30 -o ~/.cache/tauri/linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          chmod +x ~/.cache/tauri/*
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Prepare Python backend bundle resources
+        run: |
+          RESOURCES_DIR="src-tauri/resources"
+          PYTHON_DIR="$RESOURCES_DIR/python"
+          BACKEND_DEST_DIR="$RESOURCES_DIR/python_backend"
+
+          rm -rf "$RESOURCES_DIR"
+          mkdir -p "$PYTHON_DIR" "$BACKEND_DEST_DIR"
+
+          python3 -m venv "$PYTHON_DIR" --clear
+          "$PYTHON_DIR/bin/pip" install --upgrade pip
+          "$PYTHON_DIR/bin/pip" install -r python_backend/requirements-embed.txt
+
+          rsync -av --exclude='.venv' \
+                    --exclude='chrome_profile' \
+                    --exclude='__pycache__' \
+                    --exclude='requirements*.txt' \
+                    --exclude='*.pyc' \
+                    python_backend/ "$BACKEND_DEST_DIR/"
+
+          cp config.template.json "$RESOURCES_DIR/config.template.json"
+
+          find "$RESOURCES_DIR" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find "$RESOURCES_DIR" -type f -name "*.pyc" -delete 2>/dev/null || true
+
+      - name: Build Linux packages with Tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: 'Release ${{ github.event.inputs.tag || github.ref_name }}'
+          args: --bundles deb,appimage --config src-tauri/tauri.release.conf.json

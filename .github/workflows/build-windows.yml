@@ -1,0 +1,89 @@
+name: Build Windows MSI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.1.0)'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-tauri:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Prepare Python backend bundle resources
+        shell: powershell
+        run: |
+          $PythonVersion = "3.11.9"
+          $ResourcesDir  = "src-tauri\resources"
+          $PythonDir     = Join-Path $ResourcesDir "python"
+          $BackendDest   = Join-Path $ResourcesDir "python_backend"
+          $TempDir       = Join-Path $env:TEMP "forge_ci_$([guid]::NewGuid())"
+
+          Write-Host "==> Creating resource folders..."
+          New-Item -ItemType Directory -Force -Path $TempDir, $PythonDir, $BackendDest | Out-Null
+
+          Write-Host "==> Downloading embeddable Python $PythonVersion..."
+          $zipPath = Join-Path $TempDir "python-embed.zip"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip" -OutFile $zipPath
+          Expand-Archive -Path $zipPath -DestinationPath $PythonDir -Force
+
+          Write-Host "==> Enabling site-packages in embedded Python..."
+          $pthFile = Get-ChildItem $PythonDir -Filter "python*._pth" | Select-Object -First 1
+          if ($pthFile) {
+              $pthContent = Get-Content $pthFile.FullName
+              $pthContent = $pthContent -replace '^#import site', 'import site'
+              if (-not ($pthContent -contains 'import site')) { $pthContent += "`nimport site" }
+              Set-Content -Path $pthFile.FullName -Value $pthContent
+          }
+
+          Write-Host "==> Bootstrapping pip and installing embedded dependencies..."
+          $getPip = Join-Path $TempDir "get-pip.py"
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPip
+          & "$PythonDir\python.exe" $getPip --no-warn-script-location
+          & "$PythonDir\python.exe" -m pip install -r "python_backend\requirements-embed.txt" --no-warn-script-location
+
+          Write-Host "==> Copying python_backend into bundle resources..."
+          robocopy "python_backend" $BackendDest /E /XD .venv chrome_profile __pycache__ /XF requirements.txt requirements-embed.txt *.pyc
+          if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
+
+          Copy-Item "config.template.json" "$ResourcesDir\config.template.json"
+
+          # Clean temp directory
+          Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
+          Write-Host "==> Python resources successfully prepared in $ResourcesDir"
+
+      - name: Build MSI with Tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: 'Release ${{ github.event.inputs.tag || github.ref_name }}'
+          args: --bundles msi --config src-tauri/tauri.release.conf.json

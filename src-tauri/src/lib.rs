@@ -28,11 +28,15 @@ pub fn run() {
       // Only auto-spawn the embedded sidecar in production builds (i.e. the
       // installed MSI). In `tauri dev`, src-tauri/resources/python/ doesn't
       // exist until build_installer.ps1 has run — dev relies on start.bat
-      // launching python.exe from the dev venv instead.
       if !cfg!(debug_assertions) {
+        #[cfg(windows)]
+        let python_path = "python/python.exe";
+        #[cfg(not(windows))]
+        let python_path = "python/bin/python";
+
         let python_exe = app
           .path()
-          .resolve("python/python.exe", BaseDirectory::Resource)?;
+          .resolve(python_path, BaseDirectory::Resource)?;
         let backend_dir = app
           .path()
           .resolve("python_backend", BaseDirectory::Resource)?;
