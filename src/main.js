@@ -22,6 +22,18 @@ const btnStop = document.getElementById('btn-stop');
 const tokens5hEl  = document.getElementById('tokens-5h');
 const tokens24hEl = document.getElementById('tokens-24h');
 
+// ── Reusable SVG Icons (cross-platform, Linux-safe) ───────────────────────────
+const ICONS = {
+  CHECK: `<svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  GEAR: `<svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  EDIT: `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  TRASH: `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+  PLAY: `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
+  ZAP: `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
+  CLIP: `<svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`,
+  ALERT: `<svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+};
+
 // ── Global Pan and Zoom state (n8n-style) ──────────────────────────────────────
 let panX = 40;
 let panY = 40;
@@ -168,7 +180,7 @@ function renderChatHistory(pathMessages) {
     } else if (msg.type === "tool") {
       const firstLine = msg.content ? msg.content.split('\n')[0].trim() : "";
       const summary = firstLine.substring(0, 80) + (firstLine.length > 80 ? '…' : '');
-      addToolRow('✓', `${msg.name} → ${summary}`, 'tool-done');
+      addToolRow(ICONS.CHECK, `${msg.name} → ${summary}`, 'tool-done');
     }
   });
   
@@ -257,9 +269,10 @@ function renderTreeView(nodes, rootId, activeNodeId) {
     excerpt.className = 'node-content-excerpt';
     
     if (node.type === "root") {
-      excerpt.textContent = "🚀 Start of Session";
+      excerpt.innerHTML = `${ICONS.PLAY} Start of Session`;
     } else if (node.type === "summary") {
-      excerpt.textContent = "⚡ " + (node.agent_message ? node.agent_message.content.substring(0, 30) : "Summary");
+      const summaryText = node.agent_message ? escHtml(node.agent_message.content.substring(0, 30)) : "Summary";
+      excerpt.innerHTML = `${ICONS.ZAP} ${summaryText}`;
     } else {
       const query = node.user_message ? node.user_message.content : "";
       excerpt.textContent = query.substring(0, 30) + (query.length > 30 ? "…" : "");
@@ -271,7 +284,7 @@ function renderTreeView(nodes, rootId, activeNodeId) {
     
     const renameBtn = document.createElement('button');
     renameBtn.className = 'node-btn';
-    renameBtn.textContent = '✏️ Label';
+    renameBtn.innerHTML = `${ICONS.EDIT} Label`;
     renameBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       const newLabel = prompt("Enter label for this branch/node:", node.label || "");
@@ -399,8 +412,8 @@ function renderSessionList(sessions) {
       <div class="node-content-excerpt">${escHtml(displayText)}</div>
       <div style="font-size:11px; opacity:0.6; margin-top:4px;">${escHtml(when)}</div>
       <div class="node-actions">
-        <button class="node-btn rename-session-btn">✏️ Rename</button>
-        <button class="node-btn delete-session-btn">🗑 Delete</button>
+        <button class="node-btn rename-session-btn">${ICONS.EDIT} Rename</button>
+        <button class="node-btn delete-session-btn">${ICONS.TRASH} Delete</button>
       </div>
     `;
 
@@ -537,21 +550,21 @@ socket.onmessage = (event) => {
       statusBar.textContent = clean;
       // Also show persistent upload confirmations in chat log
       if (clean.startsWith("File uploaded") || clean.startsWith("File attached") || clean.startsWith("Session saved")) {
-        appendOutputMessage('✔ ' + clean, 'status-msg');
+        appendOutputMessage(`${ICONS.CHECK} ${clean}`, 'status-msg');
       }
     }
   }
   else if (msg.type === "summarised") {
-    appendOutputMessage(`📋 Summary: ${msg.content}`, 'status-msg');
+    appendOutputMessage(`${ICONS.ZAP} Summary: ${msg.content}`, 'status-msg');
     statusBar.textContent = '';
   }
   else if (msg.type === "tool_start") {
-    statusBar.textContent = `⚙  ${msg.content}`;
-    addToolRow('⚙', msg.content, 'tool-start');
+    statusBar.textContent = msg.content;
+    addToolRow(ICONS.GEAR, msg.content, 'tool-start');
   }
   else if (msg.type === "tool_done") {
     statusBar.textContent = '';
-    addToolRow('✓', msg.content, 'tool-done');
+    addToolRow(ICONS.CHECK, msg.content, 'tool-done');
   }
   else if (msg.type === "token") {
     statusBar.textContent = '';
@@ -568,7 +581,7 @@ socket.onmessage = (event) => {
   }
   else if (msg.type === "error") {
     finaliseAgentBubble();
-    appendOutputMessage('⚠ ' + msg.content, 'error-response');
+    appendOutputMessage(`${ICONS.ALERT} ${msg.content}`, 'error-response');
     btnStop.classList.add('hidden');
     statusBar.textContent = '';
   }
@@ -625,11 +638,11 @@ if (window.__TAURI__) {
       event.payload.paths.forEach(path => {
         const name = path.split(/[\\/]/).pop();
         if (socket.readyState !== WebSocket.OPEN) {
-          appendOutputMessage('⚠ WebSocket not connected.', 'error-response');
+          appendOutputMessage(`${ICONS.ALERT} WebSocket not connected.`, 'error-response');
           return;
         }
         socket.send(JSON.stringify({ type: 'attach_file', name, path }));
-        appendOutputMessage(`📎 Attaching: ${name}`, 'status-msg');
+        appendOutputMessage(`${ICONS.CLIP} Attaching: ${name}`, 'status-msg');
       });
       dropZone.classList.remove('drag-over');
     } else if (event.payload.type === 'enter' || event.payload.type === 'over') {
@@ -653,7 +666,7 @@ function attachPath() {
   if (!path) return;
   const name = path.split(/[\\/]/).pop();
   if (socket.readyState !== WebSocket.OPEN) {
-    appendOutputMessage('⚠ WebSocket not connected.', 'error-response');
+    appendOutputMessage(`${ICONS.ALERT} WebSocket not connected.`, 'error-response');
     return;
   }
   socket.send(JSON.stringify({ type: 'attach_file', name, path }));
@@ -696,7 +709,11 @@ function appendOutputMessage(text, className, labelText = "") {
     el.appendChild(label);
     el.appendChild(body);
   } else {
-    el.textContent = text;
+    if (className === 'status-msg' || className === 'error-response') {
+      el.innerHTML = text;
+    } else {
+      el.textContent = text;
+    }
   }
   logsDiv.appendChild(el);
   logsDiv.scrollTop = logsDiv.scrollHeight;

@@ -1,6 +1,6 @@
 # Forge — Local AI Assistant
 
-> A fully local, tool-using AI agent that runs on your machine. Drop in custom Python tools, connect any OpenAI-compatible LLM (cloud or local), and let it browse the web, read files, run scripts, and take screenshots — all from a native desktop UI.
+> A local-first desktop AI assistant featuring tree-style conversation branching, context pruning, and instant extensibility with custom Python tools.
 
 ![Forge UI](docs/screenshot.png)
 
@@ -8,11 +8,13 @@
 
 ## What is Forge?
 
-Forge is a desktop AI agent built around the idea that your AI should work *on your machine*, not just *for* you in a browser tab. It connects any OpenAI-compatible model — including locally-run Gemma, Llama, Mistral, or cloud APIs like Google AI Studio — to a set of real, executable tools: file I/O, browser automation, Python script execution, clipboard access, screenshots, and more.
+Forge is an autonomous desktop AI agent that executes directly on your machine instead of running solely in a cloud browser tab. It connects any OpenAI-compatible model (such as Google AI Studio, Ollama, OpenRouter, or LM Studio) to local system capabilities: file management, Playwright browser automation, script execution, clipboard access, and screen capture.
 
-You extend it by dropping a single Python file into a folder. No configuration, no registration, no recompilation. The agent picks it up on the next run.
+Unlike traditional linear chatbots, Forge organizes conversations into an interactive **decision tree**. You can explore multiple lines of thought, branch new directions from any past turn, and prune alternative context paths to dramatically reduce token consumption.
 
-The UI is a Tauri desktop app (Rust shell + web frontend). The backend is a Python WebSocket sidecar running LangGraph. The two talk over a local WebSocket at `ws://localhost:8765`.
+To extend the agent, simply drop a Python file into the tools directory. The agent automatically discovers it on the next run with zero registration or recompilation.
+
+The UI is a native Tauri desktop app (Rust shell + lightweight frontend). The backend is a Python WebSocket sidecar running LangGraph, communicating locally over `ws://localhost:8765`.
 
 ---
 
@@ -26,97 +28,92 @@ The UI is a Tauri desktop app (Rust shell + web frontend). The backend is a Pyth
 
 ## Features
 
-- **Tool-using agent** — LangGraph-powered reasoning loop that calls real local tools, not simulated ones
-- **Streaming responses** — tokens stream in real time; internal thought blocks are stripped before display
-- **Browser automation** — Playwright-based browser tool that opens a real Chrome window and navigates, searches, fills forms, extracts content, and downloads files
-- **File I/O** — read and write files on your local filesystem, with path protection (see Guardrails)
-- **Script execution** — run Python scripts locally; stdout/stderr is returned to the agent
-- **Clipboard access** — read from and write to the system clipboard
-- **Screenshot capture** — take screenshots of your screen and pass them to the agent
-- **Drag-and-drop file attachment** — drag any file onto the UI to attach its path to the session
-- **Absolute path attachment** — paste a file path directly to register it without copying the file
-- **History management** — clear, undo (last turn), or summarise history to compress token usage
-- **Session persistence** — every session is saved to `~/.forge/agent_sessions/` as a timestamped `.txt` file including start time, end time, duration, and total token count
-- **Dual history system** — active history (passed to LLM, can be cleared/undone/summarised) is kept separate from the permanent session log (append-only, never modified)
-- **Settings UI** — change API key, model, working directory, and theme without touching config files
-- **Theme support** — dark and light mode
-- **Graceful shutdown** — closing the window saves the session and terminates the Python sidecar automatically
-- **Custom tools** — extend the agent with your own Python tools, no rebuild required
+### 🌿 Tree-Based Conversation & Context Pruning
+- **Branching conversation tree** — conversations are stored as a tree graph of turns rather than a flat linear list.
+- **Context pruning for token savings** — jumping to any branch or previous turn automatically prunes alternative branches and descendant context from the prompt sent to the LLM, keeping context lean and saving tokens.
+- **Interactive n8n-style tree viewer** — floating, draggable, and resizable canvas with smooth pan-and-zoom (centered on mouse cursor), SVG cubic bezier curve connectors, and active path highlighting.
+- **Branch labeling** — rename and label any branch point directly on the canvas to organize your exploration paths.
+- **Context summarization** — one-click compression (`Summarise`) that compresses older turns into a summary node via the LLM while retaining the last two turns verbatim.
+- **Rolling token telemetry** — real-time token counter per turn, with rolling 5-hour and 24-hour token usage metrics displayed in the header.
+
+### 📂 Session Persistence & Management
+- **In-app session browser** — browse, preview, resume, rename, and delete past conversation trees directly from the UI (`Previous Sessions`).
+- **Zero-loss persistence** — every session is saved as a complete tree graph in `~/.forge/agent_sessions/session_<id>.json`.
+- **Exportable text logs** — human-readable session transcripts including start time, end time, duration, and total token count saved to `.txt`.
+
+### ⚙ Autonomous Tool-Using Agent
+- **LangGraph reasoning loop** — iterative agent execution (up to 10 rounds) that calls real local tools based on dynamic model decisions.
+- **Real-time streaming** — tokens stream live word-by-word; internal `<thought>` / `<thinking>` blocks are stripped before display.
+- **Instant generation stop** — `Stop` button immediately halts generation or running tools via backend threading events.
+- **Extensible custom tools** — drop any Python file decorated with `@tool` into `python_backend/tools/` or `~/.forge/tools/` to make it live instantly.
+- **Browser automation** — Playwright-based browser tool that opens Chrome, searches, fills forms, navigates pages, downloads files, and extracts content.
+- **Local Python execution** — executes scripts in a subprocess with timeouts and returns combined stdout/stderr.
+- **File attachments** — native drag-and-drop file attachment via Tauri webview window events, plus direct absolute path attachment.
+
+### 🛡 Security & Guardrails
+- **Protected path firewall** — `is_path_protected` prevents reading, writing, or executing against `config.json`, `.env`, or the `python_backend/` codebase to prevent prompt injection attacks.
+- **Destructive command detection** — inspects scripts for dangerous patterns (`os.remove`, `rm -rf`, `DROP TABLE`) and requires explicit confirmation.
+- **Script audit logging** — every executed script is archived with a timestamp in `~/.agent_scripts/`.
+- **Private credentials** — API keys and settings are stored locally in `~/.forge/config.json` and never sent anywhere except your chosen LLM endpoint.
+
+### 💻 Cross-Platform & Modern UI
+- **Dedicated Windows & Linux workflows** — specialized scripts for development setup and launcher in `windows/` and `linux/`.
+- **`uv` & standard Python support** — automatically uses `uv` for lightning-fast virtual environment and package installation if available, with automatic fallback to standard Python 3.11+.
+- **Zero-dependency inline SVG UI** — cross-platform vector icons that render crisply on Linux (WebKitGTK) without requiring extra system font downloads.
+- **Dark & light themes** — built-in theme toggle with syntax highlighting for code blocks (`highlight.js`) and markdown support (`marked.js`) with one-click code copy buttons.
+- **Graceful shutdown** — closing the window saves the active session and cleanly terminates the Python sidecar.
 
 ---
 
 ## Getting started
 
-There are two ways to use Forge: install the pre-built MSI (end users), or run from source (developers).
+You can use Forge by installing the pre-built application or running it directly from source.
 
-### Option A — Install the MSI (end users, zero dependencies)
+### Option A — Pre-built installer (recommended for end users)
 
-1. Download the latest `Forge_x.x.x_x64_en-US.msi` from the [Releases](../../releases) page
-2. Run the installer — no Python, Node, or Rust required
-3. Launch **Forge** from the Start Menu
-4. Open **Settings** (⚙ button, top right), enter your API key, and click **Commit Setup Changes**
+1. Download the latest installer from the [Releases](../../releases) page:
+   - **Windows:** `.msi`
+   - **Linux:** `.deb` or `.AppImage`
+2. Run the installer (no Python, Node.js, or Rust required).
+3. Launch **Forge** from your application launcher.
 
-On first launch, Forge will automatically download the Chromium browser in the background for the `browser_action` tool. This is a one-time download into `~/.forge/playwright-browsers/`.
+> **First launch note:** On first run, Forge automatically downloads Chromium in the background to `~/.forge/playwright-browsers/` for the `browser_action` tool.
 
 ### Option B — Run from source (developers)
 
-**Requirements:** Python 3.11+, Node.js 18+, Rust (stable), Google Chrome
+**Requirements:** Python 3.11+ (or `uv`), Node.js 18+, Rust (stable), Google Chrome
 
-**First time only:**
+1. **Clone repository:**
+   ```bash
+   git clone https://github.com/harshgupta-23/Forge.git
+   cd Forge
+   ```
 
-```cmd
-git clone https://github.com/harshgupta-23/Forge.git
-cd forge
-setup.bat
-```
+2. **First-time setup:**
+   - **Windows:** `windows\setup.bat`
+   - **Linux:** `bash linux/setup.sh`
+   *(Automatically sets up Python venv, installs dependencies, and configures Playwright.)*
 
-`setup.bat` creates the venv, installs all Python and Node dependencies, installs Playwright browsers, and copies `config.template.json` → `config.json`. Then open Settings in the app and enter your API key and your preferred output directory for agent-created files.
-
-**Every time after that:**
-
-```cmd
-start.bat
-```
-
-`start.bat` starts the Python backend in a separate terminal, waits 3 seconds, then launches the Tauri UI.
+3. **Launch application:**
+   - **Windows:** `windows\start.bat`
+   - **Linux:** `bash linux/start.sh`
+   *(Starts the Python sidecar and opens the Tauri UI.)*
 
 ---
 
-## Building the MSI installer (developers)
+## Configuration
 
-**Requirements:** Python 3.11+, Node.js 18+, Rust (stable), internet connection
+Click the **Settings** (⚙) button in the top bar to configure:
 
-Run from the project root:
+1. **API Key** — Your model provider key (Google AI Studio keys work out of the box: `AIzaSy...`).
+2. **Active Engine Model** — Default is `gemma-4-27b-it` (or any model identifier your provider supports).
+3. **API Base URL** — Leave blank for Google AI Studio, or set custom endpoint (e.g. Ollama, OpenRouter).
+4. **Working Output Path** — Directory where the agent writes generated files.
+5. Click **Commit Setup Changes** to apply immediately without restarting.
 
-```powershell
-powershell -ExecutionPolicy Bypass -File build_installer.ps1
-```
-
-The script will:
-1. Download the embeddable Python 3.11.9 runtime
-2. Bootstrap pip and install all dependencies from `requirements-embed.txt` into the embedded interpreter
-3. Copy the backend source into `src-tauri/resources/`
-4. Run `tauri build --bundles msi`
-
-The finished `.msi` is output to `src-tauri/target/release/bundle/msi/`.
-
-> `src-tauri/resources/` is a build artifact — it is gitignored and must never be committed.
-
----
-
-## Setup
-
-1. Open **Settings** (⚙ button, top right)
-2. Enter your **API key** — Google AI Studio keys work out of the box (`AIzaSy...`)
-3. Set the **model** — default is `gemma-4-27b-it`; use any model string your provider supports
-4. Set your **output directory** — where the agent saves files it creates
-5. Click **Commit Setup Changes**
-
-Your config is saved to `~/.forge/config.json` — never inside the source tree.
+Configuration is saved to `~/.forge/config.json` outside the source tree.
 
 ### Supported API providers
-
-Any OpenAI-compatible endpoint works:
 
 | Provider | Base URL |
 |---|---|
@@ -127,30 +124,46 @@ Any OpenAI-compatible endpoint works:
 
 ---
 
+## Building installer packages (developers)
+
+**Requirements:** Python 3.11+ (or `uv`), Node.js 18+, Rust (stable), internet connection
+
+**Windows (MSI):**
+```powershell
+powershell -ExecutionPolicy Bypass -File windows\build_installer.ps1
+```
+
+**Linux (deb / appimage):**
+```bash
+bash linux/build_installer.sh
+```
+
+Packages are output to `src-tauri/target/release/bundle/`.
+
+---
+
 ## Built-in tools
 
 | Tool | What it does |
 |---|---|
-| `web_search` | Searches the web and returns results |
+| `web_search` | Searches the web and returns results via DuckDuckGo |
 | `browser_action` | Full browser automation via Playwright — navigate, search, fill forms, extract content, download files |
-| `read_file` | Reads a file from disk and returns its contents |
-| `write_file` | Writes content to a file on disk |
-| `run_local_python_script` | Executes a Python script locally and returns stdout/stderr |
+| `read_file` | Reads a file from disk and returns its contents (path protected) |
+| `write_file` | Writes content to a file on disk (path protected) |
+| `run_local_python_script` | Executes a Python script locally and returns stdout/stderr with security audit logging |
 | `take_screenshot` | Captures a screenshot and saves it to the working directory |
 | `read_clipboard` | Reads the current clipboard contents |
 | `write_clipboard` | Writes text to the clipboard |
 | `list_directory` | Lists files and folders in a directory |
 | `copy_file` | Copies a file from one path to another |
-| `pip_install` | Installs a Python package into system Python at runtime |
+| `pip_install` | Installs a Python package into isolated user environment at runtime |
 | `get_environment_info` | Returns system info — OS, Python version, environment variables |
 
 ---
 
 ## Adding custom tools
 
-This is the core design principle of Forge: **any Python file dropped into the tools folder becomes an agent tool automatically.**
-
-Drop your tool into `python_backend/tools/`:
+Drop any Python file into `python_backend/tools/` or `~/.forge/tools/`:
 
 ```python
 # python_backend/tools/my_tool.py
@@ -165,41 +178,20 @@ def my_tool(input: str) -> str:
     return "result"
 ```
 
-Restart Forge and the tool is live. No other changes needed anywhere.
-
-You can also drop tools into `~/.forge/tools/` — these are loaded at runtime and kept separate from the source tree. This works in both the dev setup and the MSI install.
+Restart Forge and the tool is live. No registration or rebuild required.
 
 ### Rules for custom tools
 
-- The `@tool`-decorated function must have the **same name as the file** (without `.py`)
-- The **docstring is critical** — the LLM reads it to decide when to use the tool. Be specific and concrete
-- Return a **string** — the agent receives the return value as text in its context
-- You can import anything available in the Python environment
-- Tools can call external APIs, run subprocesses, interact with the OS, or anything else Python can do
-
-### Example: a currency converter tool
-
-```python
-# tools/convert_currency.py
-import urllib.request
-import json
-from langchain_core.tools import tool
-
-@tool
-def convert_currency(query: str) -> str:
-    """
-    Converts an amount from one currency to another.
-    Input format: '100 USD to INR'
-    """
-    ...
-    return f"{amount} {from_cur} = {result:.2f} {to_cur}"
-```
+- Decorated function must match the file name (without `.py`).
+- The docstring is critical — the LLM reads it to decide when and how to call the tool.
+- Return a string — the agent receives the return value as context.
+- Tools can import any library in the Python environment, call subprocesses, or invoke external APIs.
 
 ---
 
 ## Guardrails
 
-Forge runs with direct access to your local machine. Three built-in tools — `read_file`, `write_file`, and `run_local_python_script` — check every path against a protection list before executing:
+Built-in tools check every file path against a protection policy before executing:
 
 ```python
 def is_path_protected(file_path: str) -> bool:
@@ -214,9 +206,7 @@ def is_path_protected(file_path: str) -> bool:
     return False
 ```
 
-This prevents the agent from reading or writing your API key (`config.json`), any `.env` file, or any file inside the `python_backend/` source directory — even if instructed to do so by a prompt injection or a malicious webpage visited via `browser_action`. Attempts to access protected paths are blocked and the agent is told the path is unavailable.
-
-Your API key is stored only in `~/.forge/config.json` and is never sent anywhere except your chosen LLM provider.
+This prevents the agent from reading or modifying API keys (`config.json`), `.env` files, or the `python_backend/` codebase — even if prompted by web injection or malicious files.
 
 ---
 
@@ -231,25 +221,22 @@ Your API key is stored only in `~/.forge/config.json` and is never sent anywhere
 | `python_backend/app.py` | ✅ | WebSocket sidecar |
 | `python_backend/tools/` | ✅ | Built-in tools |
 | `python_backend/requirements.txt` | ✅ | Dev dependencies |
-| `python_backend/requirements-embed.txt` | ✅ | MSI build dependencies |
+| `python_backend/requirements-embed.txt` | ✅ | Bundler build dependencies |
 | `config.template.json` | ✅ | Safe default config |
-| `build_installer.ps1` | ✅ | MSI build script |
-| `start.bat` | ✅ | Dev launcher |
-| `setup.bat` | ✅ | First-time dev setup |
+| `windows/` | ✅ | Windows setup, start, clean, and MSI build scripts |
+| `linux/` | ✅ | Linux setup, start, clean, and package build scripts |
 | `config.json` | ❌ | Contains your API key |
 | `python_backend/.venv/` | ❌ | Virtual environment |
 | `python_backend/chrome_profile/` | ❌ | Browser session data |
 | `node_modules/` | ❌ | npm packages |
 | `src-tauri/target/` | ❌ | Rust build output |
-| `src-tauri/resources/` | ❌ | Generated by build_installer.ps1 |
+| `src-tauri/resources/` | ❌ | Generated by build scripts |
 
 ---
 
 ## Current limitations
 
-- **No session browser** — sessions are saved as `.txt` files but there is no in-app UI to browse, search, or resume a previous session. This is planned.
-- **Python scripts only** — `run_local_python_script` runs Python only. PowerShell or Bash tasks need either a Python `subprocess` wrapper or a dedicated custom tool.
-- **No branching history** — history is linear (clear, undo one turn, summarise). There is no checkpoint system to branch from a mid-conversation state or fully restore an earlier point if a long tool chain fails deep into execution.
+- **Python scripts only** — `run_local_python_script` runs Python only. Shell tasks (PowerShell or Bash) currently need a Python `subprocess` wrapper or a dedicated custom tool.
 - **Single user, local only** — the WebSocket sidecar runs on localhost and is designed for one active session at a time.
 
 ---
@@ -257,3 +244,4 @@ Your API key is stored only in `~/.forge/config.json` and is never sent anywhere
 ## License
 
 [Apache License 2.0](LICENSE)
+

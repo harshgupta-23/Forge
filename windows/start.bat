@@ -9,12 +9,20 @@
 :: ============================================================
 echo Starting Agent...
 
+if not exist "%~dp0..\python_backend\.venv" (
+    echo ERROR: Python virtual environment not found in python_backend\.venv
+    echo Please run windows\setup.bat first.
+    pause
+    exit /b 1
+)
+
 :: Start Python backend in its own window
-start "Python Backend" cmd /k "cd /d %~dp0python_backend && .venv\Scripts\activate && python app.py"
+start "Python Backend" cmd /k "cd /d %~dp0..\python_backend && .venv\Scripts\activate && python app.py"
 
 :: Wait for Python to be ready
 timeout /t 3 /nobreak >nul
 
 :: Start Tauri from project root
-cd /d %~dp0
+cd /d "%~dp0.."
 npx tauri dev
+

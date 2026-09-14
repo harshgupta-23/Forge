@@ -1,3 +1,6 @@
+# ── Configuration (contains private API key) ─────────────────────────────────
+config.json
+
 # ── Python backend ────────────────────────────────────────────────────────────
 python_backend/.venv/
 python_backend/__pycache__/
@@ -8,16 +11,14 @@ python_backend/uploaded_files/
 python_backend/**/__pycache__/
 python_backend/**/*.pyc
 
-# ── Config (contains API key) ─────────────────────────────────────────────────
-config.json
-
-# ── Node ──────────────────────────────────────────────────────────────────────
+# ── Node dependencies ─────────────────────────────────────────────────────────
 node_modules/
 package-lock.json
 
-# ── Tauri build output ────────────────────────────────────────────────────────
+# ── Tauri & Rust build output ──────────────────────────────────────────────────
 src-tauri/target/
 src-tauri/resources/
+src-tauri/gen/
 
 # ── Session and agent data ────────────────────────────────────────────────────
 agent_sessions/
@@ -30,6 +31,3 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
-
-# ── Other scripts ─────────────────────────────────────────────────────────────
-remove.bat

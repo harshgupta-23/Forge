@@ -3,8 +3,8 @@
   Assembles a portable, embedded Python 3.11.9 runtime + the Forge backend
   into src-tauri/resources, then builds a zero-dependency MSI installer.
 
-  Run from the project root:
-      powershell -ExecutionPolicy Bypass -File build_installer.ps1
+  Run from project root or windows folder:
+      powershell -ExecutionPolicy Bypass -File windows\build_installer.ps1
 #>
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +13,8 @@ $PythonVersion   = "3.11.9"
 $PythonZipUrl    = "https://www.python.org/ftp/python/$PythonVersion/python-$PythonVersion-embed-amd64.zip"
 $GetPipUrl       = "https://bootstrap.pypa.io/get-pip.py"
 
-$ProjectRoot     = Get-Location
+$ScriptDir       = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot     = (Resolve-Path "$ScriptDir\..").Path
 $ResourcesDir    = Join-Path $ProjectRoot "src-tauri\resources"
 $PythonDir       = Join-Path $ResourcesDir "python"
 $BackendSrcDir   = Join-Path $ProjectRoot "python_backend"
@@ -27,10 +28,10 @@ function Write-Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
 Write-Step "Running sanity checks"
 
 if (-not (Test-Path $BackendSrcDir)) {
-    throw "python_backend\ not found. Run this script from the project root."
+    throw "python_backend\ not found at $BackendSrcDir."
 }
 if (-not (Test-Path $ConfigTemplate)) {
-    throw "config.template.json not found at project root."
+    throw "config.template.json not found at $ConfigTemplate."
 }
 $reqFile = Join-Path $ProjectRoot "python_backend\requirements-embed.txt"
 if (-not (Test-Path $reqFile)) {
@@ -117,22 +118,35 @@ Get-ChildItem -Path $ResourcesDir -Recurse -File -Filter "*.pyc" |
 # ── 8. Frontend deps (only if missing) ──────────────────────────────────────
 if (-not (Test-Path (Join-Path $ProjectRoot "node_modules"))) {
     Write-Step "Installing frontend dependencies"
-    npm install
-    if ($LASTEXITCODE -ne 0) { throw "npm install failed (exit code $LASTEXITCODE)." }
+    Push-Location $ProjectRoot
+    try {
+        npm install
+        if ($LASTEXITCODE -ne 0) { throw "npm install failed (exit code $LASTEXITCODE)." }
+    } finally {
+        Pop-Location
+    }
 }
 
 # ── 9. Build — MSI only ─────────────────────────────────────────────────────
 Write-Step "Building MSI installer"
-npx tauri build --bundles msi --config src-tauri/tauri.release.conf.json
-if ($LASTEXITCODE -ne 0) { throw "tauri build failed (exit code $LASTEXITCODE)." }
+Push-Location $ProjectRoot
+try {
+    npx tauri build --bundles msi --config src-tauri/tauri.release.conf.json
+    if ($LASTEXITCODE -ne 0) { throw "tauri build failed (exit code $LASTEXITCODE)." }
+} finally {
+    Pop-Location
+}
 
 # ── 10. Report output ────────────────────────────────────────────────────────
 Write-Step "Done"
 $msiDir = Join-Path $ProjectRoot "src-tauri\target\release\bundle\msi"
 Write-Host "Installer output: $msiDir" -ForegroundColor Green
-Get-ChildItem $msiDir -Filter "*.msi" | ForEach-Object {
-    Write-Host " - $($_.FullName)" -ForegroundColor Green
+if (Test-Path $msiDir) {
+    Get-ChildItem $msiDir -Filter "*.msi" | ForEach-Object {
+        Write-Host " - $($_.FullName)" -ForegroundColor Green
+    }
 }
 
 # ── Cleanup temp dir ─────────────────────────────────────────────────────────
 Remove-Item -Recurse -Force $TempDir -ErrorAction SilentlyContinue
+

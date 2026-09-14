@@ -124,6 +124,55 @@ input, select { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-b
   font-size: 12px;
 }
 
+.icon {
+  display: inline-block;
+  vertical-align: middle;
+  flex-shrink: 0;
+  stroke: currentColor;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+header h2 {
+  margin: 0;
+  margin-right: auto;
+  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#connection-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  padding: 8px 14px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+#connection-banner button {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.panel-header h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 button {
   font-family: inherit;
   font-weight: 500;
@@ -134,10 +183,61 @@ button {
   border: 1px solid var(--border-color);
   background: var(--bg-panel);
   color: var(--text-main);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   
   /* This creates the smooth transition effect */
   transition: all 0.25s ease;
   outline: none;
+}
+
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  margin: 2px 0;
+  border-radius: 4px;
+}
+
+.tool-row.tool-start {
+  color: var(--secondary);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.tool-row.tool-done {
+  color: var(--accent);
+  background: rgba(0, 250, 154, 0.08);
+}
+
+.tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.msg-bubble.status-msg {
+  color: var(--accent);
+  font-size: 12.5px;
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.msg-bubble.error-response {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Subtle physical lift and brightness on hover */
