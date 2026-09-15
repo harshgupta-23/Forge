@@ -53,7 +53,7 @@ The UI is a native Tauri desktop app (Rust shell + lightweight frontend). The ba
 ### 🛡 Security & Guardrails
 - **Protected path firewall** — `is_path_protected` prevents reading, writing, or executing against `config.json`, `.env`, or the `python_backend/` codebase to prevent prompt injection attacks.
 - **Destructive command detection** — inspects scripts for dangerous patterns (`os.remove`, `rm -rf`, `DROP TABLE`) and requires explicit confirmation.
-- **Script audit logging** — every executed script is archived with a timestamp in `~/.agent_scripts/`.
+- **Script audit logging** — every executed script is archived with a timestamp in `~/.forge/agent_scripts/`.
 - **Private credentials** — API keys and settings are stored locally in `~/.forge/config.json` and never sent anywhere except your chosen LLM endpoint.
 
 ### 💻 Cross-Platform & Modern UI
@@ -120,7 +120,39 @@ Configuration is saved to `~/.forge/config.json` outside the source tree.
 | Google AI Studio | `https://generativelanguage.googleapis.com/v1beta/openai/` |
 | Ollama (local) | `http://localhost:11434/v1` |
 | OpenRouter | `https://openrouter.ai/api/v1` |
-| LM Studio | `http://localhost:1234/v1` |
+### Database Setup (Optional)
+
+Forge runs **100% out of the box** using a local SQLite checkpointer (`~/.forge/forge_checkpoints.db`) with zero external database setup required. On local setups (SQLite or native Linux/Windows PostgreSQL), your data is stored directly on the host disk and persists across reboots automatically.
+
+If you wish to run a dedicated PostgreSQL + pgvector instance via Docker for enterprise checkpointing:
+
+1. **Start PostgreSQL with Persistent Storage:**
+   *Using Docker Compose (recommended):*
+   ```bash
+   docker compose up -d
+   ```
+   *Or using Docker CLI with a named persistent volume (prevents data loss when containers are recreated):*
+   ```bash
+   docker run -d --name forge-postgres \
+     -e POSTGRES_PASSWORD=postgres \
+     -e POSTGRES_DB=forge \
+     -p 5432:5432 \
+     -v forge_postgres_data:/var/lib/postgresql/data \
+     --restart unless-stopped \
+     pgvector/pgvector:pg16
+   ```
+   *Or install natively on Linux (data automatically persists to `/var/lib/postgresql`):*
+   ```bash
+   sudo apt install -y postgresql postgresql-contrib
+   sudo -u postgres psql -c "CREATE DATABASE forge;"
+   sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+   ```
+
+2. **Configure connection string:**
+   - Open **Settings (⚙)** in the Forge desktop app and enter your connection string in the **Database URL** field:
+     `postgresql://postgres:postgres@localhost:5432/forge`
+   - Click **Commit Setup Changes** to switch databases immediately.
+   - Alternatively, add `"DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/forge"` to `~/.forge/config.json` or export the `DATABASE_URL` environment variable.
 
 ---
 

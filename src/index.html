@@ -90,6 +90,9 @@
     <label>Working Output Path:
       <input type="text" id="cfg-dir">
     </label>
+    <label>Database URL:
+      <input type="text" id="cfg-db" placeholder="postgresql://postgres:postgres@localhost:5432/forge (leave blank for SQLite)">
+    </label>
     <label>Visual Interface Scheme:
       <select id="cfg-theme">
         <option value="dark">Dark Theme</option>
@@ -104,7 +107,8 @@
     <div id="agent-status-bar"></div>
   </div>
 
-  <div id="drop-zone">Drop file here to attach</div>
+  <div id="drop-zone" title="Click to browse or drop files">Drop file here or click to attach</div>
+  <input type="file" id="file-picker-input" style="display: none;" multiple>
 
   <div id="path-input-area">
     <input type="text" id="path-input" placeholder="Or paste absolute path: C:\Users\...">

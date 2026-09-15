@@ -9,8 +9,8 @@ from pathlib import Path
 from datetime import datetime
 from langchain_core.tools import tool
 
-# Audit log setup
-AUDIT_LOG_DIR = Path(os.environ.get("AGENT_AUDIT_DIR", Path.home() / ".agent_scripts"))
+# Audit log setup (all stored under ~/.forge/agent_scripts)
+AUDIT_LOG_DIR = Path(os.environ.get("AGENT_AUDIT_DIR", Path.home() / ".forge" / "agent_scripts"))
 
 def _write_audit_log(script_code: str) -> Path:
     try:
@@ -62,7 +62,7 @@ def run_local_python_script(script_code: str) -> str:
     Execute a Python script string locally via a subprocess.
     Returns combined STDOUT, STDERR, and exit code.
     Timeout: 45 seconds.
-    Every script is saved to ~/.agent_scripts/ for auditing.
+    Every script is saved to ~/.forge/agent_scripts/ for auditing.
     Prompts user confirmation if script contains destructive operations.
     """
     # CRITICAL LOOPHOLE FIREWALL

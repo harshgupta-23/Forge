@@ -34,7 +34,8 @@ def browser_action(instructions: str) -> str:
 
     instr = instructions.strip()
     instr_lower = instr.lower()
-    headless = os.environ.get("BROWSER_HEADLESS", "false").lower() != "false"
+    # Default to headless=True so browser runs in background without opening GUI windows
+    headless = os.environ.get("BROWSER_HEADLESS", "true").lower() != "false"
 
     url_match = re.search(r'https?://[^\s,]+', instr)
     start_url = url_match.group(0).rstrip(".,)") if url_match else None
@@ -58,32 +59,26 @@ def browser_action(instructions: str) -> str:
     results    = []
     timeout_ms = 30_000
 
+    p = None
+    context = None
+
     try:
-        if _PLAYWRIGHT_INSTANCE is None:
-            _PLAYWRIGHT_INSTANCE = sync_playwright().start()
+        p = sync_playwright().start()
+        user_data_dir = os.environ.get("CHROME_USER_DATA_DIR", str(Path.home() / ".forge" / "chrome_profile"))
 
-        p = _PLAYWRIGHT_INSTANCE
-        user_data_dir = os.environ.get("CHROME_USER_DATA_DIR", "./chrome_profile")
-
-        if _PERSISTENT_CONTEXT is None:
-            try:
-                print("  \033[90m[browser] Launching Chrome...\033[0m", flush=True)
-                _PERSISTENT_CONTEXT = p.chromium.launch_persistent_context(
-                    user_data_dir=user_data_dir,
-                    channel="chrome",
-                    headless=headless,
-                    viewport={"width": 1280, "height": 800},
-                    accept_downloads=True,
-                )
-                results.append("Launched Chrome.")
-            except Exception as e:
-                print(f"  \033[91m[browser] Profile locked or Chrome not found: {e}\033[0m", flush=True)
-                browser = p.chromium.launch(headless=headless)
-                context = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
-                _PERSISTENT_CONTEXT = context
-                results.append("WARNING: Using isolated Chromium instance (system Chrome unavailable).")
-
-        context = _PERSISTENT_CONTEXT
+        try:
+            context = p.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                channel="chrome",
+                headless=headless,
+                viewport={"width": 1280, "height": 800},
+                accept_downloads=True,
+            )
+            results.append("Launched Chrome (background)." if headless else "Launched Chrome.")
+        except Exception as e:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+            results.append("Using Chromium (background)." if headless else "Using Chromium.")
         page = context.pages[0] if context.pages else context.new_page()
 
         if start_url:
@@ -167,3 +162,15 @@ def browser_action(instructions: str) -> str:
 
     except Exception as exc:
         return f"ERROR in browser_action: {exc}"
+    finally:
+        # Cleanly close browser context and terminate the background process
+        if context:
+            try:
+                context.close()
+            except Exception:
+                pass
+        if p:
+            try:
+                p.stop()
+            except Exception:
+                pass

@@ -117,12 +117,24 @@ function startAgentBubble() {
   currentAgentText   = "";
   currentAgentBubble = document.createElement('div');
   currentAgentBubble.className = 'msg-bubble agent-response';
+
+  const header = document.createElement('div');
+  header.className = 'bubble-header';
+
   const label = document.createElement('span');
   label.className   = 'bubble-label';
   label.textContent = 'Agent: ';
+  header.appendChild(label);
+
+  const badge = document.createElement('span');
+  badge.className = 'token-pill agent-token-pill agent-live-token-pill';
+  badge.textContent = '~0 tok';
+  header.appendChild(badge);
+
   const body = document.createElement('span');
   body.className = 'bubble-body';
-  currentAgentBubble.appendChild(label);
+
+  currentAgentBubble.appendChild(header);
   currentAgentBubble.appendChild(body);
   logsDiv.appendChild(currentAgentBubble);
   logsDiv.scrollTop = logsDiv.scrollHeight;
@@ -132,13 +144,24 @@ function appendToken(token) {
   if (!currentAgentBubble) startAgentBubble();
   currentAgentText += token;
   currentAgentBubble.querySelector('.bubble-body').textContent = currentAgentText;
+  const liveBadge = currentAgentBubble.querySelector('.agent-live-token-pill');
+  if (liveBadge) {
+    const liveToks = Math.max(1, Math.floor(currentAgentText.length / 4));
+    liveBadge.textContent = `~${liveToks.toLocaleString()} tok`;
+  }
   logsDiv.scrollTop = logsDiv.scrollHeight;
 }
 
-function finaliseAgentBubble() {
+function finaliseAgentBubble(agentTokens = null) {
   if (currentAgentBubble) {
     const body = currentAgentBubble.querySelector('.bubble-body');
     body.innerHTML = renderMarkdown(currentAgentText);  // swap textContent → rendered HTML
+    const liveBadge = currentAgentBubble.querySelector('.agent-live-token-pill');
+    if (liveBadge) {
+      const finalToks = agentTokens || Math.max(1, Math.floor(currentAgentText.length / 4));
+      liveBadge.textContent = `~${finalToks.toLocaleString()} tok`;
+      liveBadge.classList.remove('agent-live-token-pill');
+    }
   }
   currentAgentBubble = null;
   currentAgentText   = "";
@@ -158,10 +181,16 @@ socket.addEventListener('error', () => {
 });
 
 // ── Tool rows ──────────────────────────────────────────────────────────────────
-function addToolRow(icon, text, className) {
+function addToolRow(icon, text, className, tokens = null) {
   const row = document.createElement('div');
   row.className = `tool-row ${className}`;
-  row.innerHTML = `<span class="tool-icon">${icon}</span><span class="tool-text">${escHtml(text)}</span>`;
+  const iconSpan = `<span class="tool-icon">${icon}</span>`;
+  const textSpan = `<span class="tool-text">${escHtml(text)}</span>`;
+  let badgeSpan = '';
+  if (tokens !== null && tokens !== undefined && Number(tokens) > 0) {
+    badgeSpan = `<span class="token-pill tool-token-pill">~${Number(tokens).toLocaleString()} tok</span>`;
+  }
+  row.innerHTML = `${iconSpan}${textSpan}${badgeSpan}`;
   logsDiv.appendChild(row);
   logsDiv.scrollTop = logsDiv.scrollHeight;
 }
@@ -172,15 +201,19 @@ function renderChatHistory(pathMessages) {
   
   pathMessages.forEach(msg => {
     if (msg.type === "human") {
-      appendOutputMessage(msg.content, 'user-query', 'You: ');
+      appendOutputMessage(msg.content, 'user-query', 'You: ', msg.tokens);
     } else if (msg.type === "ai") {
-      if (msg.content && typeof msg.content === 'string' && !msg.content.includes('<tool_call>')) {
-        appendOutputMessage(msg.content, 'agent-response', 'Agent: ');
+      if (msg.content && typeof msg.content === 'string') {
+        const clean = msg.content.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '').trim();
+        if (clean) {
+          appendOutputMessage(clean, 'agent-response', 'Agent: ', msg.tokens);
+        }
       }
     } else if (msg.type === "tool") {
       const firstLine = msg.content ? msg.content.split('\n')[0].trim() : "";
       const summary = firstLine.substring(0, 80) + (firstLine.length > 80 ? '…' : '');
-      addToolRow(ICONS.CHECK, `${msg.name} → ${summary}`, 'tool-done');
+      const toks = msg.tokens || (msg.content ? Math.max(1, Math.floor(msg.content.length / 4)) : 0);
+      addToolRow(ICONS.CHECK, `${msg.name} → ${summary}`, 'tool-done', toks);
     }
   });
   
@@ -278,6 +311,33 @@ function renderTreeView(nodes, rootId, activeNodeId) {
       excerpt.textContent = query.substring(0, 30) + (query.length > 30 ? "…" : "");
     }
     card.appendChild(excerpt);
+
+    if (node.type !== "root") {
+      const tokenBox = document.createElement('div');
+      tokenBox.className = 'node-token-breakdown';
+
+      let uTok = (node.tokens && node.tokens.user) || 0;
+      let tTok = (node.tokens && node.tokens.tools) || 0;
+      let aTok = (node.tokens && node.tokens.agent) || 0;
+      let totTok = (node.tokens && node.tokens.total) || 0;
+
+      if (!node.tokens) {
+        uTok = node.user_message ? Math.max(1, Math.floor((node.user_message.content || '').length / 4)) : 0;
+        tTok = node.tool_results ? node.tool_results.reduce((acc, r) => acc + (r.tokens || Math.max(1, Math.floor((r.content || '').length / 4))), 0) : 0;
+        aTok = node.agent_message ? Math.max(1, Math.floor((node.agent_message.content || '').length / 4)) : 0;
+        totTok = uTok + tTok + aTok;
+      }
+
+      tokenBox.innerHTML = `
+        <span class="node-token-total" title="Total Turn Tokens">~${totTok.toLocaleString()} tok</span>
+        <span class="node-token-detail">
+          <span title="User prompt tokens">👤 ${uTok}</span>
+          ${tTok > 0 ? `<span title="Tool tokens">⚙ ${tTok}</span>` : ''}
+          <span title="Agent output tokens">🤖 ${aTok}</span>
+        </span>
+      `;
+      card.appendChild(tokenBox);
+    }
     
     const actions = document.createElement('div');
     actions.className = 'node-actions';
@@ -528,6 +588,7 @@ socket.onmessage = (event) => {
     document.getElementById('cfg-base').value  = msg.data.API_BASE || '';
     document.getElementById('cfg-model').value = msg.data.MODEL    || '';
     document.getElementById('cfg-dir').value   = msg.data.AGENT_WORK_DIR  || '';
+    document.getElementById('cfg-db').value    = msg.data.DATABASE_URL    || '';
     document.getElementById('cfg-theme').value = msg.data.THEME           || 'dark';
     applyTheme(msg.data.THEME);
   }
@@ -554,6 +615,14 @@ socket.onmessage = (event) => {
       }
     }
   }
+  else if (msg.type === "indexing_progress") {
+    statusBar.textContent = `${msg.filename}: ${msg.message} (${msg.progress_pct}%)`;
+    if (msg.step === "indexed") {
+      appendOutputMessage(`${ICONS.CHECK} Indexed <strong>${escHtml(msg.filename)}</strong> (${msg.chunks_count} chunks) into knowledge vector store`, 'status-msg');
+    } else if (msg.step === "error") {
+      appendOutputMessage(`${ICONS.ALERT} ${escHtml(msg.message)}`, 'error-response');
+    }
+  }
   else if (msg.type === "summarised") {
     appendOutputMessage(`${ICONS.ZAP} Summary: ${msg.content}`, 'status-msg');
     statusBar.textContent = '';
@@ -564,7 +633,7 @@ socket.onmessage = (event) => {
   }
   else if (msg.type === "tool_done") {
     statusBar.textContent = '';
-    addToolRow(ICONS.CHECK, msg.content, 'tool-done');
+    addToolRow(ICONS.CHECK, msg.content, 'tool-done', msg.tokens);
   }
   else if (msg.type === "token") {
     statusBar.textContent = '';
@@ -576,8 +645,19 @@ socket.onmessage = (event) => {
     statusBar.textContent = '';
   }
   else if (msg.type === "token_count") {
-    sessionTotalTokens    = msg.content;   // single assignment
-    statusBar.textContent = `Context: ~${Number(msg.content).toLocaleString()} tokens`;
+    sessionTotalTokens = msg.content;
+    if (msg.breakdown) {
+      const b = msg.breakdown;
+      statusBar.innerHTML = `<span>Context: ~${Number(b.context_total).toLocaleString()} tok</span> <span class="turn-token-summary" title="User: ${b.user} | Tools: ${b.tools} | Agent: ${b.agent}">(Turn: ~${b.turn_total.toLocaleString()} tok &bull; You: ${b.user} | Tools: ${b.tools} | Agent: ${b.agent})</span>`;
+      
+      const divider = document.createElement('div');
+      divider.className = 'turn-summary-divider';
+      divider.innerHTML = `Turn &bull; ~${b.turn_total.toLocaleString()} tok (You: ~${b.user} &bull; Tools: ~${b.tools} &bull; Agent: ~${b.agent})`;
+      logsDiv.appendChild(divider);
+      logsDiv.scrollTop = logsDiv.scrollHeight;
+    } else {
+      statusBar.textContent = `Context: ~${Number(msg.content).toLocaleString()} tokens`;
+    }
   }
   else if (msg.type === "error") {
     finaliseAgentBubble();
@@ -594,6 +674,7 @@ document.getElementById('save-settings').addEventListener('click', () => {
     API_BASE: document.getElementById('cfg-base').value.trim(),
     MODEL:    document.getElementById('cfg-model').value.trim(),
     AGENT_WORK_DIR:  document.getElementById('cfg-dir').value.trim(),
+    DATABASE_URL:    document.getElementById('cfg-db').value.trim(),
     THEME:           document.getElementById('cfg-theme').value,
   };
   socket.send(jsonStringifyEvent("save_config", payload));
@@ -613,47 +694,196 @@ btnStop.addEventListener('click', () => {
 function dispatchMessage() {
   const txt = userInput.value.trim();
   if (!txt) return;
-  const bubble = document.createElement('div');
-  bubble.className = 'msg-bubble user-query';
-  const label = document.createElement('span');
-  label.className   = 'bubble-label';
-  label.textContent = 'You: ';
-  const body = document.createElement('span');
-  body.className    = 'bubble-body';
-  body.textContent  = txt;
-  bubble.appendChild(label);
-  bubble.appendChild(body);
-  logsDiv.appendChild(bubble);
-  logsDiv.scrollTop = logsDiv.scrollHeight;
+  const userToks = Math.max(1, Math.floor(txt.length / 4));
+  appendOutputMessage(txt, 'user-query', 'You: ', userToks);
   socket.send(jsonStringifyEvent("user_message", txt));
   btnStop.classList.remove('hidden');
   userInput.value = "";
 }
 
-// ── Tauri file drop ────────────────────────────────────────────────────────
-if (window.__TAURI__) {
-  const { getCurrentWebviewWindow } = window.__TAURI__.webviewWindow;
-  getCurrentWebviewWindow().onDragDropEvent((event) => {
-    if (event.payload.type === 'drop') {
-      event.payload.paths.forEach(path => {
-        const name = path.split(/[\\/]/).pop();
-        if (socket.readyState !== WebSocket.OPEN) {
-          appendOutputMessage(`${ICONS.ALERT} WebSocket not connected.`, 'error-response');
-          return;
-        }
-        socket.send(JSON.stringify({ type: 'attach_file', name, path }));
-        appendOutputMessage(`${ICONS.CLIP} Attaching: ${name}`, 'status-msg');
+// ── File Attachment & Drag and Drop ─────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const filePickerInput = document.getElementById('file-picker-input');
+const recentlyAttached = new Set();
+
+function attachFile(name, path) {
+  if (!name || !path) return;
+  const key = `${name}::${path}`;
+  if (recentlyAttached.has(key)) return;
+  recentlyAttached.add(key);
+  setTimeout(() => recentlyAttached.delete(key), 1500);
+
+  if (socket.readyState !== WebSocket.OPEN) {
+    appendOutputMessage(`${ICONS.ALERT} WebSocket not connected.`, 'error-response');
+    return;
+  }
+  socket.send(JSON.stringify({ type: 'attach_file', name, path }));
+  appendOutputMessage(`${ICONS.CLIP} Attaching: ${name}`, 'status-msg');
+}
+
+async function handleFiles(files) {
+  if (!files || files.length === 0) return;
+  for (const file of files) {
+    if (file.path) {
+      attachFile(file.name, file.path);
+      continue;
+    }
+    // Fallback: Upload file to backend /api/upload to obtain local absolute path
+    try {
+      appendOutputMessage(`${ICONS.CLIP} Uploading ${file.name}...`, 'status-msg');
+      const base64 = await readFileAsBase64(file);
+      const res = await fetch('http://localhost:8765/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, content_base64: base64 })
       });
-      dropZone.classList.remove('drag-over');
-    } else if (event.payload.type === 'enter' || event.payload.type === 'over') {
-      dropZone.classList.add('drag-over');
-    } else if (event.payload.type === 'leave' || event.payload.type === 'cancel') {
-      dropZone.classList.remove('drag-over');
+      if (!res.ok) {
+        throw new Error(`Upload failed: ${res.statusText}`);
+      }
+      const data = await res.json();
+      attachFile(data.name, data.path);
+    } catch (err) {
+      appendOutputMessage(`${ICONS.ALERT} Failed to upload ${file.name}: ${err.message}`, 'error-response');
+    }
+  }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = reader.result;
+      const commaIdx = res.indexOf(',');
+      resolve(commaIdx >= 0 ? res.slice(commaIdx + 1) : res);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Click drop zone to browse files
+if (dropZone && filePickerInput) {
+  dropZone.addEventListener('click', () => {
+    filePickerInput.click();
+  });
+  filePickerInput.addEventListener('change', () => {
+    if (filePickerInput.files && filePickerInput.files.length > 0) {
+      handleFiles(filePickerInput.files);
+      filePickerInput.value = '';
     }
   });
-} else {
-  console.warn('Not running in Tauri — file drop unavailable.');
 }
+
+// Standard HTML5 Drag and Drop listeners (browser & webview)
+['dragenter', 'dragover'].forEach(eventName => {
+  window.addEventListener(eventName, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (dropZone) dropZone.classList.add('drag-over');
+  }, false);
+});
+
+['dragleave', 'dragend'].forEach(eventName => {
+  window.addEventListener(eventName, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight || e.target === document.documentElement) {
+      if (dropZone) dropZone.classList.remove('drag-over');
+    }
+  }, false);
+});
+
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  if (dropZone) dropZone.classList.remove('drag-over');
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    handleFiles(e.dataTransfer.files);
+  }
+}, false);
+
+// Tauri Native File Drop (supports all Tauri v2 event dispatch mechanisms)
+function setupTauriFileDrop() {
+  if (!window.__TAURI__) {
+    console.log('Running outside Tauri — HTML5 file drop active.');
+    return;
+  }
+
+  // 1. Direct Tauri event listener (most reliable in Tauri v2 across Linux / Windows)
+  if (window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
+    try {
+      window.__TAURI__.event.listen('tauri://drag-enter', () => {
+        if (dropZone) dropZone.classList.add('drag-over');
+      });
+      window.__TAURI__.event.listen('tauri://drag-over', () => {
+        if (dropZone) dropZone.classList.add('drag-over');
+      });
+      window.__TAURI__.event.listen('tauri://drag-leave', () => {
+        if (dropZone) dropZone.classList.remove('drag-over');
+      });
+      window.__TAURI__.event.listen('tauri://drag-drop', (event) => {
+        if (dropZone) dropZone.classList.remove('drag-over');
+        const paths = event.payload?.paths || (Array.isArray(event.payload) ? event.payload : []);
+        paths.forEach(filePath => {
+          const fileName = filePath.split(/[\\/]/).pop();
+          attachFile(fileName, filePath);
+        });
+      });
+    } catch (err) {
+      console.warn('Failed to register window.__TAURI__.event listeners:', err);
+    }
+  }
+
+  // 2. WebviewWindow onDragDropEvent fallback
+  try {
+    const win = window.__TAURI__.webviewWindow?.getCurrentWebviewWindow?.();
+    if (win && typeof win.onDragDropEvent === 'function') {
+      win.onDragDropEvent((event) => {
+        const type = event?.payload?.type;
+        if (type === 'drop') {
+          if (dropZone) dropZone.classList.remove('drag-over');
+          const paths = event.payload?.paths || [];
+          paths.forEach(filePath => {
+            const fileName = filePath.split(/[\\/]/).pop();
+            attachFile(fileName, filePath);
+          });
+        } else if (type === 'enter' || type === 'over') {
+          if (dropZone) dropZone.classList.add('drag-over');
+        } else if (type === 'leave' || type === 'cancel') {
+          if (dropZone) dropZone.classList.remove('drag-over');
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to register webviewWindow.onDragDropEvent:', err);
+  }
+
+  // 3. Webview onDragDropEvent fallback
+  try {
+    const wv = window.__TAURI__.webview?.getCurrentWebview?.();
+    if (wv && typeof wv.onDragDropEvent === 'function') {
+      wv.onDragDropEvent((event) => {
+        const type = event?.payload?.type;
+        if (type === 'drop') {
+          if (dropZone) dropZone.classList.remove('drag-over');
+          const paths = event.payload?.paths || [];
+          paths.forEach(filePath => {
+            const fileName = filePath.split(/[\\/]/).pop();
+            attachFile(fileName, filePath);
+          });
+        } else if (type === 'enter' || type === 'over') {
+          if (dropZone) dropZone.classList.add('drag-over');
+        } else if (type === 'leave' || type === 'cancel') {
+          if (dropZone) dropZone.classList.remove('drag-over');
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('Failed to register webview.onDragDropEvent:', err);
+  }
+}
+
+setupTauriFileDrop();
 
 // ── Absolute path attach ───────────────────────────────────────────────────────
 document.getElementById('attach-path-btn').addEventListener('click', attachPath);
@@ -665,13 +895,8 @@ function attachPath() {
   const path = document.getElementById('path-input').value.trim();
   if (!path) return;
   const name = path.split(/[\\/]/).pop();
-  if (socket.readyState !== WebSocket.OPEN) {
-    appendOutputMessage(`${ICONS.ALERT} WebSocket not connected.`, 'error-response');
-    return;
-  }
-  socket.send(JSON.stringify({ type: 'attach_file', name, path }));
+  attachFile(name, path);
   document.getElementById('path-input').value = '';
-  // Confirmation shown when server sends back status message
 }
 
 // ── History controls ───────────────────────────────────────────────────────
@@ -691,13 +916,27 @@ btnSummarise.addEventListener('click', () => {
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function appendOutputMessage(text, className, labelText = "") {
+function appendOutputMessage(text, className, labelText = "", tokens = null) {
   const el = document.createElement('div');
   el.className  = `msg-bubble ${className}`;
   if (labelText) {
+    const header = document.createElement('div');
+    header.className = 'bubble-header';
+
     const label = document.createElement('span');
     label.className   = 'bubble-label';
     label.textContent = labelText;
+    header.appendChild(label);
+
+    const toks = tokens !== null && tokens !== undefined ? Number(tokens) : (text ? Math.max(1, Math.floor(text.length / 4)) : 0);
+    if (toks > 0) {
+      const badge = document.createElement('span');
+      badge.className = `token-pill ${className === 'user-query' ? 'user-token-pill' : 'agent-token-pill'}`;
+      badge.textContent = `~${toks.toLocaleString()} tok`;
+      header.appendChild(badge);
+    }
+    el.appendChild(header);
+
     const body = document.createElement('span');
     body.className    = 'bubble-body';
     // Agent responses get markdown rendering; user input stays as plain text (XSS safety)
@@ -706,7 +945,6 @@ function appendOutputMessage(text, className, labelText = "") {
     } else {
       body.textContent = text;
     }
-    el.appendChild(label);
     el.appendChild(body);
   } else {
     if (className === 'status-msg' || className === 'error-response') {

@@ -103,11 +103,18 @@ input, select { width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-b
   font-size: 13px;
   margin: 6px 10px 4px;
   cursor: pointer;
-  transition: border-color 0.2s, color 0.2s;
+  transition: border-color 0.2s, color 0.2s, background-color 0.2s;
+  user-select: none;
+}
+#drop-zone:hover {
+  border-color: #777;
+  color: #aaa;
+  background-color: rgba(255, 255, 255, 0.03);
 }
 #drop-zone.drag-over {
   border-color: #7eb8f7;
   color: #7eb8f7;
+  background-color: rgba(126, 184, 247, 0.1);
 }
 #path-input-area {
   display: flex;
@@ -201,6 +208,13 @@ button {
   padding: 4px 8px;
   margin: 2px 0;
   border-radius: 4px;
+}
+
+.tool-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tool-row.tool-start {
@@ -403,14 +417,47 @@ button:active {
 }
 #save-settings:hover { background-color: var(--secondary-hover); }
 
-/* --- Input Improvements to match --- */
-input[type="text"], input[type="password"], select {
+input[type="text"], input[type="password"] {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   color: var(--text-input);
   padding: 8px 12px;
   transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
+}
+
+select, #cfg-theme {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-color: var(--bg-input) !important;
+  color: var(--text-input) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px;
+  padding: 8px 32px 8px 12px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a0a0aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 10px center !important;
+  background-size: 16px !important;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s, color 0.2s;
+}
+
+select option, #cfg-theme option {
+  background-color: #1e1e24 !important;
+  color: #ffffff !important;
+}
+
+body.light-theme select, body.light-theme #cfg-theme {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+  border-color: #e4e4e7 !important;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e") !important;
+}
+
+body.light-theme select option, body.light-theme #cfg-theme option {
+  background-color: #ffffff !important;
+  color: #18181b !important;
 }
 
 /* Make sure placeholders are legible too */
@@ -781,4 +828,139 @@ body.light-theme #btn-tree-view:hover {
   color: inherit;
   padding: 0;
   font-size: 0.88em;
+}
+
+/* ── Explicit Token Metric Badges & Breakdowns ───────────────── */
+.bubble-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.token-pill {
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 1px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.user-token-pill {
+  background: rgba(255, 80, 80, 0.14);
+  border: 1px solid rgba(255, 80, 80, 0.28);
+  color: #ff8585;
+}
+
+.agent-token-pill {
+  background: rgba(0, 250, 154, 0.12);
+  border: 1px solid rgba(0, 250, 154, 0.25);
+  color: #00fa9a;
+}
+
+.agent-live-token-pill {
+  animation: pulseLiveToken 1.6s infinite ease-in-out;
+}
+
+@keyframes pulseLiveToken {
+  0%, 100% { opacity: 0.9; }
+  50% { opacity: 0.45; }
+}
+
+.tool-token-pill {
+  margin-left: auto;
+  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  color: #6ba4ff;
+  font-size: 10.5px;
+  padding: 1px 6px;
+}
+
+body.light-theme .user-token-pill {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #dc2626;
+}
+
+body.light-theme .agent-token-pill {
+  background: rgba(0, 122, 255, 0.1);
+  border-color: rgba(0, 122, 255, 0.25);
+  color: #0066cc;
+}
+
+body.light-theme .tool-token-pill {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.25);
+  color: #2563eb;
+}
+
+.turn-summary-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 12px 0 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'Consolas', 'Fira Code', monospace;
+  letter-spacing: 0.02em;
+}
+
+.turn-summary-divider::before,
+.turn-summary-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.light-theme .turn-summary-divider::before,
+body.light-theme .turn-summary-divider::after {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.turn-token-summary {
+  margin-left: 12px;
+  opacity: 0.85;
+  font-size: 11.5px;
+  font-family: 'Consolas', 'Fira Code', monospace;
+}
+
+/* Tree View Card Token Breakdown */
+.node-token-breakdown {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  font-family: 'Consolas', 'Fira Code', monospace;
+}
+
+body.light-theme .node-token-breakdown {
+  border-top-color: rgba(0, 0, 0, 0.08);
+}
+
+.node-token-total {
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(0, 250, 154, 0.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+body.light-theme .node-token-total {
+  color: var(--accent);
+  background: rgba(0, 122, 255, 0.1);
+}
+
+.node-token-detail {
+  display: flex;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
 }

@@ -90,6 +90,8 @@ echo ========================================
 echo  Setup complete!
 echo  1. Run windows\start.bat to launch the app from now on.
 echo  2. Open Settings and enter your API key.
+echo  3. Checkpointing: Defaults to local SQLite (%USERPROFILE%\.forge\forge_checkpoints.db).
+echo     To use PostgreSQL, run 'docker compose up -d' and set Database URL in Settings.
 echo ========================================
 pause
 

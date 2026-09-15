@@ -3,5 +3,6 @@
   "MODEL": "gemma-4-26b-a4b-it",
   "API_BASE": "",
   "AGENT_WORK_DIR": "",
-  "THEME": "dark"
+  "THEME": "dark",
+  "DATABASE_URL": ""
 }

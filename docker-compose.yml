@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: forge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: forge
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named persistent volume to prevent data wipe on container stop/recreate
+      - forge_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d forge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  forge_postgres_data:
+    driver: local
+

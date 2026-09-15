@@ -10,11 +10,13 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "Forge — Local AI Assistant",
         "width": 800,
         "height": 600,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "dragDropEnabled": true
       }
     ],
     "security": {

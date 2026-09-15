@@ -1,27 +1,49 @@
-# ── Configuration (contains private API key) ─────────────────────────────────
+# ── Configuration & Credentials ───────────────────────────────────────────────
 config.json
+.env
+.env.*
+*.local
 
-# ── Python backend ────────────────────────────────────────────────────────────
+# ── Python backend & Virtual Environments ─────────────────────────────────────
 python_backend/.venv/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
 python_backend/__pycache__/
+python_backend/**/__pycache__/
+python_backend/**/*.pyc
 python_backend/build/
 python_backend/dist/
 python_backend/chrome_profile/
 python_backend/uploaded_files/
-python_backend/**/__pycache__/
-python_backend/**/*.pyc
 
-# ── Node dependencies ─────────────────────────────────────────────────────────
+# ── Testing, Coverage & Logs ──────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+token_usage.log
+
+# ── Node dependencies & logs ──────────────────────────────────────────────────
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # ── Tauri & Rust build output ──────────────────────────────────────────────────
 src-tauri/target/
 src-tauri/resources/
 src-tauri/gen/
 
-# ── Session and agent data ────────────────────────────────────────────────────
+# ── Runtime Agent Outputs & User Data ─────────────────────────────────────────
 agent_sessions/
 agent_audit_logs/
+agent_scripts/
+agent_outputs/
+playwright-browsers/
+chrome_profile/
 
 # ── OS / editor ───────────────────────────────────────────────────────────────
 .DS_Store
@@ -30,3 +52,7 @@ desktop.ini
 .vscode/
 .idea/
 *.swp
+
+# ── Local Agent Documentation ─────────────────────────────────────────────────
+detailed_project_summary.md
+project_stage.md

@@ -38,5 +38,5 @@ for py_file in CUSTOM_TOOLS_DIR.glob("*.py"):
     except Exception as e:
         print(f"[tools] Failed to load custom tool {module_name}: {e}")
 
-# AUDIT_LOG_DIR used by main.py for /logs command
-AUDIT_LOG_DIR = Path.home() / "agent_audit_logs"
+# AUDIT_LOG_DIR used for /logs command (all stored under ~/.forge/agent_audit_logs)
+AUDIT_LOG_DIR = Path.home() / ".forge" / "agent_audit_logs"
