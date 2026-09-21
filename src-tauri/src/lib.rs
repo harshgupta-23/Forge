@@ -25,10 +25,13 @@ pub fn run() {
         )?;
       }
 
-      // Only auto-spawn the embedded sidecar in production builds (i.e. the
-      // installed MSI). In `tauri dev`, src-tauri/resources/python/ doesn't
-      // exist until build_installer.ps1 has run — dev relies on start.bat
-      if !cfg!(debug_assertions) {
+      // Only auto-spawn the embedded sidecar in production builds when running in local mode.
+      // If BACKEND_MODE=remote or FORGE_BACKEND_URL is set, Tauri connects directly to remote/cloud.
+      let is_remote = std::env::var("BACKEND_MODE")
+        .map(|v| v.to_lowercase() == "remote")
+        .unwrap_or(false) || std::env::var("FORGE_BACKEND_URL").is_ok();
+
+      if !cfg!(debug_assertions) && !is_remote {
         #[cfg(windows)]
         let python_path = "python/python.exe";
         #[cfg(not(windows))]

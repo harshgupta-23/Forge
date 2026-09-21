@@ -40,6 +40,7 @@ from server.dependencies import (
 )
 from engine.utils import count_tokens, estimate_tokens, summarise_history
 from engine.graph import get_compiled_graph, stream_graph_execution
+from engine.tree_search import auto_prune_dead_ends, revive_branch_if_pruned
 from storage import (
     metadata_store,
     checkpoints_to_tree_data,
@@ -89,9 +90,9 @@ async def send_state_and_tree(websocket: WebSocket, session: ActiveSession) -> N
 
     graph = get_compiled_graph()
     snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": thread_id}})]
-    labels = await metadata_store.get_labels(thread_id)
+    meta_map = await metadata_store.get_metadata_map(thread_id)
 
-    tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, labels)
+    tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, meta_map)
     effective_active = tree_dict.get("active_node_id", "node_root")
     session_manager.set_active_checkpoint(thread_id, effective_active)
 
@@ -163,6 +164,11 @@ async def websocket_endpoint(websocket: WebSocket):
                 old_db_url = os.environ.get("DATABASE_URL", "").strip()
                 save_config(cfg)
                 apply_config_to_env(cfg)
+                try:
+                    from observability.tracer import sync_tracing_env
+                    sync_tracing_env(cfg)
+                except Exception:
+                    pass
                 new_db_url = os.environ.get("DATABASE_URL", "").strip()
                 status_msg = "Configuration saved and applied."
 
@@ -354,6 +360,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 target_cid = event.content or event.data
                 if target_cid:
                     session_manager.set_active_checkpoint(session.thread_id, target_cid)
+                    await revive_branch_if_pruned(session.thread_id, target_cid)
                     await websocket.send_text(StatusOutbound(content="Switched active node.").model_dump_json())
                     await send_state_and_tree(websocket, session)
 
@@ -398,6 +405,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 async def _generate_task(delta=delta_state, t_id=thread_id, c_id=active_cid):
                     queue: asyncio.Queue = asyncio.Queue()
+                    turn_pruned_savings = 0
 
                     graph_task = asyncio.create_task(
                         stream_graph_execution(
@@ -416,6 +424,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             if event_type == "__end__":
                                 await websocket.send_text(DoneOutbound().model_dump_json())
                                 break
+
+                            elif event_type == "token_savings":
+                                if isinstance(payload, tuple) and len(payload) == 3:
+                                    _, _, savings = payload
+                                    turn_pruned_savings = savings
 
                             elif event_type in ("done", "cancelled"):
                                 # Update active checkpoint pointer to the newly written turn checkpoint
@@ -451,12 +464,16 @@ async def websocket_endpoint(websocket: WebSocket):
                                         tools=t_tok,
                                         agent=a_tok,
                                         turn_total=turn_tok,
-                                        context_total=tokens
+                                        context_total=tokens,
+                                        pruned_savings=turn_pruned_savings
                                     )
 
                                     await websocket.send_text(TokenCountOutbound(content=tokens, breakdown=breakdown).model_dump_json())
                                     log_token_usage(tokens)
                                     await websocket.send_text(TokenUsageWindowsOutbound(**get_token_usage_windows()).model_dump_json())
+
+                                    # Run background dead-end detection on updated graph
+                                    await auto_prune_dead_ends(t_id, snapshots)
 
                                 if event_type == "cancelled":
                                     await websocket.send_text(StatusOutbound(content="Generation stopped by user.").model_dump_json())

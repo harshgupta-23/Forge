@@ -18,7 +18,21 @@ HOME = pathlib.Path.home()
 BACKEND_DIR = pathlib.Path(__file__).resolve().parent.parent
 PROJECT_ROOT = BACKEND_DIR.parent
 
-AGENT_HOME = HOME / ".forge"
+def _resolve_agent_home() -> pathlib.Path:
+    target = HOME / ".forge"
+    try:
+        target.mkdir(parents=True, exist_ok=True)
+        test_file = target / ".write_test"
+        test_file.touch()
+        test_file.unlink(missing_ok=True)
+        return target
+    except (PermissionError, OSError) as p_err:
+        fallback = pathlib.Path("/tmp/.forge")
+        fallback.mkdir(parents=True, exist_ok=True)
+        print(f"[dependencies] Warning: Cannot write to {target} ({p_err}). Falling back to {fallback}")
+        return fallback
+
+AGENT_HOME = _resolve_agent_home()
 CONFIG_PATH = AGENT_HOME / "config.json"
 SESSION_DIR = AGENT_HOME / "agent_sessions"
 TOKEN_LOG_PATH = AGENT_HOME / "token_usage.log"
@@ -28,14 +42,9 @@ PLAYWRIGHT_BROWSERS_DIR = AGENT_HOME / "playwright-browsers"
 PIP_INSTALL_DIR = AGENT_HOME / "python-packages"
 CHROME_PROFILE_DIR = AGENT_HOME / "chrome_profile"
 
-# Ensure all subdirectories inside ~/.forge exist
-AGENT_HOME.mkdir(parents=True, exist_ok=True)
-SESSION_DIR.mkdir(parents=True, exist_ok=True)
-SCRIPTS_DIR.mkdir(parents=True, exist_ok=True)
-AUDIT_LOG_DIR.mkdir(parents=True, exist_ok=True)
-PLAYWRIGHT_BROWSERS_DIR.mkdir(parents=True, exist_ok=True)
-PIP_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-CHROME_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+# Ensure all subdirectories inside AGENT_HOME exist
+for d in (SESSION_DIR, SCRIPTS_DIR, AUDIT_LOG_DIR, PLAYWRIGHT_BROWSERS_DIR, PIP_INSTALL_DIR, CHROME_PROFILE_DIR):
+    d.mkdir(parents=True, exist_ok=True)
 
 # Point all tool and library paths strictly to ~/.forge
 os.environ["AGENT_AUDIT_DIR"] = str(SCRIPTS_DIR)

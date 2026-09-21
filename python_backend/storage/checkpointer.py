@@ -8,10 +8,17 @@ import pathlib
 from contextlib import AsyncExitStack
 from typing import Optional, Any
 
-HOME = pathlib.Path.home()
-AGENT_HOME = HOME / ".forge"
+try:
+    from server.dependencies import AGENT_HOME
+except Exception:
+    AGENT_HOME = pathlib.Path.home() / ".forge"
+    try:
+        AGENT_HOME.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        AGENT_HOME = pathlib.Path("/tmp/.forge")
+        AGENT_HOME.mkdir(parents=True, exist_ok=True)
+
 SQLITE_DB_PATH = AGENT_HOME / "forge_checkpoints.db"
-AGENT_HOME.mkdir(parents=True, exist_ok=True)
 
 
 class CheckpointManager:

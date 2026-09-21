@@ -116,6 +116,7 @@ def checkpoints_to_tree_data(
             "tool_calls": [],
             "tool_results": [],
             "label": None,
+            "is_pruned": False,
             "intermediate_messages": [],
             "tokens": {
                 "user": 0,
@@ -153,7 +154,9 @@ def checkpoints_to_tree_data(
         u_msg, a_msg, t_calls, t_results, inter_msgs = _extract_turn_messages(curr_msgs, parent_msgs)
 
         created_at = turn.created_at if hasattr(turn, "created_at") else ""
-        label = labels.get(turn_cid)
+        meta = labels.get(turn_cid) if isinstance(labels.get(turn_cid), dict) else {}
+        label = meta.get("label") if meta else labels.get(turn_cid)
+        is_pruned = bool(meta.get("is_pruned", False)) if meta else False
 
         # Compute per-part token metrics for this turn node
         from engine.utils import estimate_tokens
@@ -175,6 +178,7 @@ def checkpoints_to_tree_data(
             "tool_calls": t_calls,
             "tool_results": t_results,
             "label": label,
+            "is_pruned": is_pruned,
             "intermediate_messages": inter_msgs,
             "tokens": {
                 "user": u_tokens,

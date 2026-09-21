@@ -1,0 +1,85 @@
+name: Automated Evaluation & Regression Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  evals-and-tests:
+    name: Regression & Ragas Evaluation
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'python_backend/requirements.txt'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r python_backend/requirements.txt
+
+      - name: Run Phase 1 Regression Suite (FastAPI & LangGraph Engine)
+        env:
+          PYTHONPATH: python_backend
+        run: |
+          python python_backend/tests/test_phase1.py
+
+      - name: Run Phase 2 Regression Suite (PostgreSQL & SQLite Checkpointer)
+        env:
+          PYTHONPATH: python_backend
+        run: |
+          python python_backend/tests/test_phase2.py
+
+      - name: Run Phase 3 Regression Suite (pgvector & Hybrid Retrieval)
+        env:
+          PYTHONPATH: python_backend
+        run: |
+          python python_backend/tests/test_phase3.py
+
+      - name: Run Phase 4 Regression Suite (Dynamic Context Pruning & Summarization)
+        env:
+          PYTHONPATH: python_backend
+        run: |
+          python python_backend/tests/test_phase4.py
+
+      - name: Run Phase 5 Ragas Continuous Evaluation Benchmark
+        env:
+          PYTHONPATH: python_backend
+        run: |
+          python python_backend/tests/evals/test_ragas.py
+
+      - name: Run Phase 5 Observability & Evaluation Unit Tests
+        env:
+          PYTHONPATH: python_backend
+        run: |
+          python python_backend/tests/test_phase5.py
+
+      - name: Run Phase 6 Containerization & Cloud Infrastructure Unit Tests
+        env:
+          PYTHONPATH: python_backend
+        run: |
+          python python_backend/tests/test_phase6.py
+
+      - name: Upload Evaluation Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ragas-evaluation-report
+          path: python_backend/tests/evals/eval_report.json
+          if-no-files-found: warn
+

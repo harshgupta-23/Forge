@@ -1,0 +1,69 @@
+[
+  {
+    "id": "eval_rag_01",
+    "category": "code_search_and_grounding",
+    "question": "How does Forge handle dual-backend checkpointer persistence between PostgreSQL and SQLite?",
+    "contexts": [
+      "CheckpointManager uses AsyncPostgresSaver when DATABASE_URL is configured, connecting via psycopg3 async connection pool.",
+      "If DATABASE_URL is empty or unreachable after timeout, CheckpointManager automatically falls back to local AsyncSqliteSaver storing state at ~/.forge/forge_checkpoints.db.",
+      "CheckpointManager.reconnect(new_db_url) enables live hot-swapping between SQLite and PostgreSQL at runtime when settings are saved."
+    ],
+    "ground_truth": "Forge uses CheckpointManager to connect to PostgreSQL via AsyncPostgresSaver when DATABASE_URL is set, and automatically falls back to local AsyncSqliteSaver at ~/.forge/forge_checkpoints.db when unreachable or unset. It supports live hot-swapping via reconnect().",
+    "generated_answer": "Forge uses CheckpointManager to dynamically choose between PostgreSQL (using AsyncPostgresSaver with psycopg3) and a local SQLite fallback (AsyncSqliteSaver at ~/.forge/forge_checkpoints.db). It can hot-swap at runtime via reconnect().",
+    "expected_tools": ["semantic_search"]
+  },
+  {
+    "id": "eval_rag_02",
+    "category": "dynamic_pruning",
+    "question": "What happens when a tool execution fails and later succeeds during conversation tree search?",
+    "contexts": [
+      "DynamicContextPruner detects dead-end tool failures where a subsequent retry or successful action occurred.",
+      "The pruner compacts verbose tracebacks and error messages into single-line tombstones: [Tool retry succeeded: earlier attempt failed (...). Pruned for context efficiency].",
+      "Compacting failed tool executions into tombstones prevents LLM hallucination loops while eliminating token bloat from old tracebacks.",
+      "Pruning is strictly non-destructive: checkpointer databases retain 100% of full message history."
+    ],
+    "ground_truth": "When a tool execution fails and subsequently succeeds, DynamicContextPruner compacts the earlier failed execution into a single-line tombstone to prevent hallucination loops and token bloat while keeping full state in checkpointer history.",
+    "generated_answer": "When an earlier tool attempt fails and a subsequent retry succeeds, DynamicContextPruner replaces the traceback with a concise tombstone. This prevents LLM retry hallucinations and saves tokens while preserving full history in checkpoints.",
+    "expected_tools": ["semantic_search", "read_file"]
+  },
+  {
+    "id": "eval_rag_03",
+    "category": "vector_indexing",
+    "question": "Why does Forge use the 'simple' dictionary for full-text search indexing in PostgreSQL?",
+    "contexts": [
+      "PostgreSQL full-text search with standard 'english' dictionary stems words, which mangles programming language identifiers such as camelCase and snake_case tokens.",
+      "Forge creates a GIN index using to_tsvector('simple', content) on forge_document_chunks.",
+      "The 'simple' dictionary preserves exact code tokens like handleFileDrop and user_id_v2 without destructive English stemming."
+    ],
+    "ground_truth": "Forge uses the 'simple' dictionary with to_tsvector('simple', content) to prevent English stemming from corrupting source-code identifiers like camelCase and snake_case tokens.",
+    "generated_answer": "Forge uses PostgreSQL's 'simple' text search dictionary so that code identifiers such as snake_case and camelCase are not destructively stemmed like English words.",
+    "expected_tools": ["semantic_search"]
+  },
+  {
+    "id": "eval_tool_01",
+    "category": "tool_selection_search",
+    "question": "Search the local repository documentation for Reciprocal Rank Fusion formula.",
+    "contexts": [
+      "semantic_search tool accepts query and optional session_id to perform hybrid vector and keyword retrieval.",
+      "Reciprocal Rank Fusion merges vector and full-text ranks using 1 / (60 + rank)."
+    ],
+    "ground_truth": "The semantic_search tool is called with query 'Reciprocal Rank Fusion formula'.",
+    "generated_answer": "I will use semantic_search to locate the Reciprocal Rank Fusion formula in the repository documentation.",
+    "expected_tools": ["semantic_search"]
+  },
+  {
+    "id": "eval_rag_04",
+    "category": "hierarchical_summarization",
+    "question": "How does Forge cache turn summaries across server restarts?",
+    "contexts": [
+      "HierarchicalSubtreeSummarizer creates dense summary nodes of historical conversation blocks.",
+      "The summarizer calculates a deterministic cache key using sha256 of thread_id, start_turn_id, and end_turn_id.",
+      "Summaries are stored persistently in the forge_turn_summaries relational table and cached in memory.",
+      "When the server restarts, summaries are retrieved directly from forge_turn_summaries without re-invoking the LLM."
+    ],
+    "ground_truth": "Forge calculates a deterministic SHA-256 hash of thread_id, start_turn_id, and end_turn_id, persisting the summary in the forge_turn_summaries database table so summaries persist across restarts.",
+    "generated_answer": "Forge hashes the thread ID and turn ID boundaries with SHA-256 and saves the summary into the forge_turn_summaries table, allowing instant reuse without re-calling the LLM on restart.",
+    "expected_tools": ["semantic_search"]
+  }
+]
+

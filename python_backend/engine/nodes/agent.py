@@ -15,6 +15,9 @@ from engine.utils import (
     convert_tools_to_openai_specs,
     _strip_thoughts
 )
+from engine.pruner import default_pruner
+from engine.summarizer import hierarchical_summarizer
+from engine.tokenizer import calculate_token_savings
 from tools import ALL_TOOLS
 
 _TOOL_XML_RE = re.compile(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', re.DOTALL)
@@ -50,10 +53,27 @@ async def agent_node(state: AgentState, config: RunnableConfig = None) -> dict[s
 
     messages = state["messages"]
     attached = state.get("attached_files", {})
-    contents = build_model_contents(messages, attached)
-    tool_specs = convert_tools_to_openai_specs(ALL_TOOLS)
-
+    thread_id = cfg.get("thread_id", "default")
     client, model = get_openai_client()
+
+    # Step 1: Dynamic Context Pruning (dead-ends, bulky outputs, low-relevance turns)
+    pruned_messages = default_pruner.prune_context(messages, model=model)
+
+    # Step 2: Hierarchical Subtree Summarization (compacts older ancestor blocks)
+    compacted_messages = await hierarchical_summarizer.compact_ancestor_history(
+        pruned_messages,
+        thread_id=thread_id,
+        attached_files=attached
+    )
+
+    # Step 3: Exact BPE Token Accounting & Savings Calculation
+    raw_tok, pruned_tok, savings = calculate_token_savings(messages, compacted_messages, model=model)
+    if queue and savings > 0:
+        await queue.put(("token_savings", (raw_tok, pruned_tok, savings)))
+
+    # Step 4: Strict Gemma Turn Alternation & Role Coalescing
+    contents = build_model_contents(compacted_messages, attached)
+    tool_specs = convert_tools_to_openai_specs(ALL_TOOLS)
 
     if stop_event and stop_event.is_set():
         return {

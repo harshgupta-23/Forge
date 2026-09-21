@@ -168,6 +168,7 @@ class TokenBreakdown(BaseModel):
     agent: int = 0
     turn_total: int = 0
     context_total: int = 0
+    pruned_savings: int = 0
 
 
 class TokenCountOutbound(BaseModel):

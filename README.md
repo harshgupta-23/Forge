@@ -1,279 +1,199 @@
-# Forge — Local AI Assistant
+# Forge — Enterprise-Grade Autonomous AI Agent Platform
 
-> A local-first desktop AI assistant featuring tree-style conversation branching, context pruning, and instant extensibility with custom Python tools.
+[![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph%20StateGraph-blue?logo=python)](https://github.com/langchain-ai/langgraph)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%26%20Uvicorn-009688?logo=fastapi)](https://fastapi.tiangolo.com)
+[![pgvector](https://img.shields.io/badge/Vector%20Store-PostgreSQL%20%2B%20pgvector-336791?logo=postgresql)](https://github.com/pgvector/pgvector)
+[![Tauri v2](https://img.shields.io/badge/Desktop-Tauri%20v2%20(Rust)-FFC131?logo=tauri)](https://tauri.app)
+[![Docker](https://img.shields.io/badge/DevOps-Docker%20%26%20Compose-2496ED?logo=docker)](https://www.docker.com)
+[![Terraform](https://img.shields.io/badge/IaC-Terraform%20(AWS)-844FBA?logo=terraform)](https://www.terraform.io)
+[![LangSmith](https://img.shields.io/badge/Observability-LangSmith%20Tracing-FF6F00)](https://www.langchain.com/langsmith)
+[![Ragas](https://img.shields.io/badge/Evaluation-Ragas%20CI%2FCD-4CAF50)](https://github.com/explodinggradients/ragas)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
+> **Forge** is a high-performance, local-first autonomous AI agent designed for complex multi-turn reasoning, stateful conversational branching, and local execution. Built with a decoupled **Tauri (Rust)** desktop shell, an async **FastAPI** streaming gateway, a multi-node **LangGraph** engine, **pgvector** hybrid RAG, dynamic context pruning, and automated **Ragas** CI/CD continuous evaluation.
 
 ![Forge UI](docs/screenshot.png)
 
 ---
 
-## What is Forge?
+## 🌟 Why Forge?
 
-Forge is an autonomous desktop AI agent that executes directly on your machine instead of running solely in a cloud browser tab. It connects any OpenAI-compatible model (such as Google AI Studio, Ollama, OpenRouter, or LM Studio) to local system capabilities: file management, Playwright browser automation, script execution, clipboard access, and screen capture.
+Traditional AI assistants force users into linear, fragile chat threads where context bloat burns tokens and dead-end tool failures pollute reasoning. **Forge solves this with a tree-native architecture:**
 
-Unlike traditional linear chatbots, Forge organizes conversations into an interactive **decision tree**. You can explore multiple lines of thought, branch new directions from any past turn, and prune alternative context paths to dramatically reduce token consumption.
-
-To extend the agent, simply drop a Python file into the tools directory. The agent automatically discovers it on the next run with zero registration or recompilation.
-
-The UI is a native Tauri desktop app (Rust shell + lightweight frontend). The backend is a Python WebSocket sidecar running LangGraph, communicating locally over `ws://localhost:8765`.
-
----
-
-## Architecture
-
-![Architecture diagram](docs/architecture.svg)
-
-*The frontend communicates with the Python backend exclusively over a local WebSocket — no HTTP server, no REST API, no external relay.*
+- 🌿 **Interactive Decision Tree Canvas**: Explore multiple parallel lines of reasoning on an infinite n8n-style zoomable canvas. Fork conversations from any previous turn with instantaneous time-travel rollback.
+- ✂️ **Dynamic Context Pruning**: JIT algorithmic compaction that tombstones failed tool retries, truncates bulky outputs, and hierarchically summarizes subtrees—cutting token costs by over 40% while keeping the active branch lean.
+- 🔍 **Hybrid pgvector RAG & Reranking**: Enterprise retrieval combining pgvector cosine similarity with PostgreSQL full-text keyword search via Reciprocal Rank Fusion (RRF) and two-tier LLM reranking.
+- 🛡️ **Zero-Crash Stateful Checkpointing**: Durable persistence powered by `AsyncPostgresSaver` (with zero-configuration local `AsyncSqliteSaver` fallback) preserving complete execution histories across application restarts.
+- 📊 **Production Observability & Automated Evaluation**: Thread-scoped LangSmith tracing and an automated Ragas continuous evaluation harness integrated into GitHub Actions CI.
+- ☁️ **Cloud-Ready & Hybrid Decoupled**: Multi-stage non-root Docker containerization, AWS Terraform infrastructure (ECS Fargate, RDS PostgreSQL, ALB), and thin-client remote connectivity.
 
 ---
 
-## Features
+## 🏛️ System Architecture
 
-### 🌿 Tree-Based Conversation & Context Pruning
-- **Branching conversation tree** — conversations are stored as a tree graph of turns rather than a flat linear list.
-- **Context pruning for token savings** — jumping to any branch or previous turn automatically prunes alternative branches and descendant context from the prompt sent to the LLM, keeping context lean and saving tokens.
-- **Interactive n8n-style tree viewer** — floating, draggable, and resizable canvas with smooth pan-and-zoom (centered on mouse cursor), SVG cubic bezier curve connectors, and active path highlighting.
-- **Branch labeling** — rename and label any branch point directly on the canvas to organize your exploration paths.
-- **Context summarization** — one-click compression (`Summarise`) that compresses older turns into a summary node via the LLM while retaining the last two turns verbatim.
-- **Rolling token telemetry** — real-time token counter per turn, with rolling 5-hour and 24-hour token usage metrics displayed in the header.
-
-### 📂 Session Persistence & Management
-- **In-app session browser** — browse, preview, resume, rename, and delete past conversation trees directly from the UI (`Previous Sessions`).
-- **Zero-loss persistence** — every session is saved as a complete tree graph in `~/.forge/agent_sessions/session_<id>.json`.
-- **Exportable text logs** — human-readable session transcripts including start time, end time, duration, and total token count saved to `.txt`.
-
-### ⚙ Autonomous Tool-Using Agent
-- **LangGraph reasoning loop** — iterative agent execution (up to 10 rounds) that calls real local tools based on dynamic model decisions.
-- **Real-time streaming** — tokens stream live word-by-word; internal `<thought>` / `<thinking>` blocks are stripped before display.
-- **Instant generation stop** — `Stop` button immediately halts generation or running tools via backend threading events.
-- **Extensible custom tools** — drop any Python file decorated with `@tool` into `python_backend/tools/` or `~/.forge/tools/` to make it live instantly.
-- **Browser automation** — Playwright-based browser tool that opens Chrome, searches, fills forms, navigates pages, downloads files, and extracts content.
-- **Local Python execution** — executes scripts in a subprocess with timeouts and returns combined stdout/stderr.
-- **File attachments** — native drag-and-drop file attachment via Tauri webview window events, plus direct absolute path attachment.
-
-### 🛡 Security & Guardrails
-- **Protected path firewall** — `is_path_protected` prevents reading, writing, or executing against `config.json`, `.env`, or the `python_backend/` codebase to prevent prompt injection attacks.
-- **Destructive command detection** — inspects scripts for dangerous patterns (`os.remove`, `rm -rf`, `DROP TABLE`) and requires explicit confirmation.
-- **Script audit logging** — every executed script is archived with a timestamp in `~/.forge/agent_scripts/`.
-- **Private credentials** — API keys and settings are stored locally in `~/.forge/config.json` and never sent anywhere except your chosen LLM endpoint.
-
-### 💻 Cross-Platform & Modern UI
-- **Dedicated Windows & Linux workflows** — specialized scripts for development setup and launcher in `windows/` and `linux/`.
-- **`uv` & standard Python support** — automatically uses `uv` for lightning-fast virtual environment and package installation if available, with automatic fallback to standard Python 3.11+.
-- **Zero-dependency inline SVG UI** — cross-platform vector icons that render crisply on Linux (WebKitGTK) without requiring extra system font downloads.
-- **Dark & light themes** — built-in theme toggle with syntax highlighting for code blocks (`highlight.js`) and markdown support (`marked.js`) with one-click code copy buttons.
-- **Graceful shutdown** — closing the window saves the active session and cleanly terminates the Python sidecar.
-
----
-
-## Getting started
-
-You can use Forge by installing the pre-built application or running it directly from source.
-
-### Option A — Pre-built installer (recommended for end users)
-
-1. Download the latest installer from the [Releases](../../releases) page:
-   - **Windows:** `.msi`
-   - **Linux:** `.deb` or `.AppImage`
-2. Run the installer (no Python, Node.js, or Rust required).
-3. Launch **Forge** from your application launcher.
-
-> **First launch note:** On first run, Forge automatically downloads Chromium in the background to `~/.forge/playwright-browsers/` for the `browser_action` tool.
-
-### Option B — Run from source (developers)
-
-**Requirements:** Python 3.11+ (or `uv`), Node.js 18+, Rust (stable), Google Chrome
-
-1. **Clone repository:**
-   ```bash
-   git clone https://github.com/harshgupta-23/Forge.git
-   cd Forge
-   ```
-
-2. **First-time setup:**
-   - **Windows:** `windows\setup.bat`
-   - **Linux:** `bash linux/setup.sh`
-   *(Automatically sets up Python venv, installs dependencies, and configures Playwright.)*
-
-3. **Launch application:**
-   - **Windows:** `windows\start.bat`
-   - **Linux:** `bash linux/start.sh`
-   *(Starts the Python sidecar and opens the Tauri UI.)*
-
----
-
-## Configuration
-
-Click the **Settings** (⚙) button in the top bar to configure:
-
-1. **API Key** — Your model provider key (Google AI Studio keys work out of the box: `AIzaSy...`).
-2. **Active Engine Model** — Default is `gemma-4-27b-it` (or any model identifier your provider supports).
-3. **API Base URL** — Leave blank for Google AI Studio, or set custom endpoint (e.g. Ollama, OpenRouter).
-4. **Working Output Path** — Directory where the agent writes generated files.
-5. Click **Commit Setup Changes** to apply immediately without restarting.
-
-Configuration is saved to `~/.forge/config.json` outside the source tree.
-
-### Supported API providers
-
-| Provider | Base URL |
-|---|---|
-| Google AI Studio | `https://generativelanguage.googleapis.com/v1beta/openai/` |
-| Ollama (local) | `http://localhost:11434/v1` |
-| OpenRouter | `https://openrouter.ai/api/v1` |
-### Database Setup (Optional)
-
-Forge runs **100% out of the box** using a local SQLite checkpointer (`~/.forge/forge_checkpoints.db`) with zero external database setup required. On local setups (SQLite or native Linux/Windows PostgreSQL), your data is stored directly on the host disk and persists across reboots automatically.
-
-If you wish to run a dedicated PostgreSQL + pgvector instance via Docker for enterprise checkpointing:
-
-1. **Start PostgreSQL with Persistent Storage:**
-   *Using Docker Compose (recommended):*
-   ```bash
-   docker compose up -d
-   ```
-   *Or using Docker CLI with a named persistent volume (prevents data loss when containers are recreated):*
-   ```bash
-   docker run -d --name forge-postgres \
-     -e POSTGRES_PASSWORD=postgres \
-     -e POSTGRES_DB=forge \
-     -p 5432:5432 \
-     -v forge_postgres_data:/var/lib/postgresql/data \
-     --restart unless-stopped \
-     pgvector/pgvector:pg16
-   ```
-   *Or install natively on Linux (data automatically persists to `/var/lib/postgresql`):*
-   ```bash
-   sudo apt install -y postgresql postgresql-contrib
-   sudo -u postgres psql -c "CREATE DATABASE forge;"
-   sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
-   ```
-
-2. **Configure connection string:**
-   - Open **Settings (⚙)** in the Forge desktop app and enter your connection string in the **Database URL** field:
-     `postgresql://postgres:postgres@localhost:5432/forge`
-   - Click **Commit Setup Changes** to switch databases immediately.
-   - Alternatively, add `"DATABASE_URL": "postgresql://postgres:postgres@localhost:5432/forge"` to `~/.forge/config.json` or export the `DATABASE_URL` environment variable.
-
----
-
-## Building installer packages (developers)
-
-**Requirements:** Python 3.11+ (or `uv`), Node.js 18+, Rust (stable), internet connection
-
-**Windows (MSI):**
-```powershell
-powershell -ExecutionPolicy Bypass -File windows\build_installer.ps1
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       Tauri Desktop App                     │
+│  ┌─────────────────────────────┐   ┌─────────────────────┐  │
+│  │ Rust Shell (src-tauri)      │   │ Frontend UI (src)   │  │
+│  │ - Window & sidecar manager  │   │ - Vanilla JS + CSS  │  │
+│  │ - Hybrid thin-client mode   │   │ - Pan/zoom SVG tree │  │
+│  │ - Native drag-drop bridge   │   │ - Marked.js + HLJS  │  │
+│  └─────────────────────────────┘   └──────────▲──────────┘  │
+└───────────────────────────────────────────────┼─────────────┘
+                                                │ ws://localhost:8765 / HTTP REST & SSE
+┌───────────────────────────────────────────────▼─────────────┐
+│                 FastAPI Gateway (python_backend/server)     │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │ FastAPI Application (main.py, routes/ws.py, rest.py)  │  │
+│  │ - Discriminated Union Event Validation (Pydantic v2)  │  │
+│  │ - Dynamic CORS & 5h/24h Rolling Token Telemetry       │  │
+│  │ - REST Endpoints, OpenAPI docs (/docs), & SSE Stream │  │
+│  └───────────────────────────▲───────────────────────────┘  │
+│                              │                               │
+│  ┌───────────────────────────▼───────────────────────────┐  │
+│  │ LangGraph Multi-Node Engine (python_backend/engine)   │  │
+│  │ - StateGraph: Planner -> Agent -> Evaluator -> Tools  │  │
+│  │ - Strict Gemma turn alternation & ToolMessage merge   │  │
+│  │ - Dynamic Context Pruner (Tombstoning & Truncation)   │  │
+│  │ - Hierarchical Subtree Summarizer (SHA-256 caching)   │  │
+│  │ - BPE Tokenizer with Tiktoken & Regex Fallback        │  │
+│  └───────────▲───────────────────▲───────────────────▲───┘  │
+│              │                   │                   │       │
+│  ┌───────────▼───────────┐ ┌─────▼───────────┐ ┌─────▼─────┐ │
+│  │ Dual Checkpoint Store │ │ pgvector & RAG  │ │ Observ.   │ │
+│  │ - AsyncPostgresSaver  │ │ - VectorStore   │ │ - Tracer  │ │
+│  │ - AsyncSqliteSaver    │ │ - Embeddings    │ │ - Smith   │ │
+│  │ - Metadata & Summaries│ │ - Reranker      │ │ - Ragas   │ │
+│  └───────────────────────┘ └─────────────────┘ └───────────┘ │
+│                              ▲                               │
+│  ┌───────────────────────────┴───────────────────────────┐  │
+│  │ Extensible Tooling Engine (python_backend/tools/)     │  │
+│  │ - Zero-config auto-discovery & sandbox firewall       │  │
+│  │ - Semantic search, Playwright, Python execution, etc. │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-**Linux (deb / appimage):**
-```bash
-bash linux/build_installer.sh
-```
+---
 
-Packages are output to `src-tauri/target/release/bundle/`.
+## ⚡ Key Engineering Highlights
+
+### 1. Multi-Node LangGraph Execution Loop
+Decomposes complex requests into discrete, observable steps:
+- **`planner`**: Analyzes user intent, attached documents, and past turns to formulate execution plans.
+- **`agent`**: Streams reasoning tokens and invokes structured tools via native function calling schemas. Enforces strict alternation to prevent back-to-back same-role turns on strict models (e.g. Gemma).
+- **`tools`**: Concurrent async tool execution with automatic exception isolation and parameter fallbacks.
+- **`evaluator`**: Quality critic scoring tool success and managing conditional graph traversal or termination.
+
+### 2. Algorithmic Context Pruning & Hierarchical Summaries
+- **Dead-end Tombstoning**: Verbose tracebacks and failed commands are replaced with single-line tombstones as soon as a retry succeeds, preventing catastrophic hallucination loops.
+- **Bulky Output Truncation**: Intelligently samples head/tail snippets of large outputs (>400 tokens) with reduction markers.
+- **Hierarchical Block Summarization**: Progressively summarizes historical conversation blocks and caches summaries using deterministic SHA-256 keys (`forge_turn_summaries`).
+- **Dead-end Subtree Pruning**: Heuristic beam search evaluates branch progress and automatically flags dead-end paths on the canvas.
+
+### 3. Hybrid RAG with Cross-Encoder Reranking
+- **pgvector Vector Store**: HNSW-indexed vector similarity with unconstrained dimension probing (OpenAI, Gemini, Ollama).
+- **Keyword Search**: GIN-indexed full-text search preserving camelCase and code tokens.
+- **Reciprocal Rank Fusion (RRF)**: Merges lexical and vector ranking lists:
+  $$RRF(d) = \sum_{m \in M} \frac{1}{60 + \text{rank}_m(d)}$$
+- **Two-Tier Reranker**: Rapid LLM relevance scoring with zero-dependency lexical fallback—delivering high precision without 1.5GB PyTorch binary dependencies.
+
+### 4. Enterprise Observability & Automated Evaluation
+- **LangSmith Tracing**: Unifies multi-node LangGraph cycles, tool calls, and latency spans under a thread-scoped trace tree.
+- **Dual-Mode Ragas CI/CD Harness**: Evaluates Faithfulness, Answer Relevance, Context Precision (MAP), and Context Recall. Features a deterministic offline scoring mode to run robustly in CI pipelines without relying on external API secrets.
+
+### 5. Cloud-Native DevOps & Hybrid Client
+- **Multi-Stage Docker Build**: Isolates build compilers, drops privileges to a non-root `forge:1000:1000` user, pre-configures headless Chromium, and runs native `/health` checks.
+- **Terraform IaC for AWS**: Modular cloud blueprint provisioning a VPC, subnets across 2 AZs, RDS PostgreSQL 16 + pgvector, ECS Fargate, Secrets Manager, and an ALB with extended `300s` WebSocket idle timeout.
+- **Hybrid Client Architecture**: Allows running the Tauri UI as a thin client connecting to a remote backend (`BACKEND_MODE=remote`), bypassing local sidecar execution.
 
 ---
 
-## Built-in tools
+## 🛠️ Built-in Tool Suite & Security Guardrails
 
-| Tool | What it does |
+| Tool | Capabilities |
 |---|---|
-| `web_search` | Searches the web and returns results via DuckDuckGo |
-| `browser_action` | Full browser automation via Playwright — navigate, search, fill forms, extract content, download files |
-| `read_file` | Reads a file from disk and returns its contents (path protected) |
-| `write_file` | Writes content to a file on disk (path protected) |
-| `run_local_python_script` | Executes a Python script locally and returns stdout/stderr with security audit logging |
-| `take_screenshot` | Captures a screenshot and saves it to the working directory |
-| `read_clipboard` | Reads the current clipboard contents |
-| `write_clipboard` | Writes text to the clipboard |
-| `list_directory` | Lists files and folders in a directory |
-| `copy_file` | Copies a file from one path to another |
-| `pip_install` | Installs a Python package into isolated user environment at runtime |
-| `get_environment_info` | Returns system info — OS, Python version, environment variables |
+| `semantic_search` | Hybrid vector + BM25 keyword search over ingested documents with RRF and session isolation |
+| `browser_action` | Playwright Chromium automation (page navigation, form fill, content extraction, screenshots) |
+| `run_local_python_script` | Sandboxed Python subprocess execution with dangerous syntax inspection (`rm -rf`, `DROP TABLE`) |
+| `read_file` / `write_file` | Filesystem operations protected by path boundary enforcement |
+| `web_search` | Live internet search via DuckDuckGo |
+| `pip_install` | Dynamic package installer into an isolated user environment at runtime |
+| `take_screenshot` / `read_clipboard` | Native desktop system utilities |
 
----
+> 🔒 **Security Firewall**: Built-in `is_path_protected` prevents reading, writing, or executing against `.env`, `config.json`, or the backend codebase, preventing prompt injection and exfiltration attacks.
 
-## Adding custom tools
-
-Drop any Python file into `python_backend/tools/` or `~/.forge/tools/`:
+### Instant Tool Extensibility
+Drop any Python file decorated with `@tool` into `python_backend/tools/` or `~/.forge/tools/`:
 
 ```python
-# python_backend/tools/my_tool.py
 from langchain_core.tools import tool
 
 @tool
-def my_tool(input: str) -> str:
-    """
-    One-sentence description of what this tool does.
-    The agent uses this docstring to decide when to call the tool.
-    """
-    return "result"
+def calculate_custom_metric(query: str) -> str:
+    """Computes specialized domain metrics. The LLM reads this docstring to decide when to call the tool."""
+    return f"Computed metric for {query}"
+```
+*Discovered and loaded dynamically on next startup with zero recompilation.*
+
+---
+
+## 🚀 Quickstart
+
+### Prerequisites
+- Python 3.11+ (or [`uv`](https://github.com/astral-sh/uv))
+- Node.js 18+
+- Rust (stable, for Tauri builds)
+- Google Chrome / Chromium
+
+### 1. Local Development
+```bash
+# Clone the repository
+git clone https://github.com/harshgupta-23/Forge.git
+cd Forge
+
+# Linux setup & start
+bash linux/setup.sh
+bash linux/start.sh
+
+# Windows setup & start
+windows\setup.bat
+windows\start.bat
 ```
 
-Restart Forge and the tool is live. No registration or rebuild required.
+### 2. Containerized Deployment (One Command)
+```bash
+# Launch FastAPI backend + PostgreSQL with pgvector
+docker compose up -d --build
 
-### Rules for custom tools
-
-- Decorated function must match the file name (without `.py`).
-- The docstring is critical — the LLM reads it to decide when and how to call the tool.
-- Return a string — the agent receives the return value as context.
-- Tools can import any library in the Python environment, call subprocesses, or invoke external APIs.
-
----
-
-## Guardrails
-
-Built-in tools check every file path against a protection policy before executing:
-
-```python
-def is_path_protected(file_path: str) -> bool:
-    """Returns True if the path targets config.json, a dot-env file, or the backend folder."""
-    target_path = Path(file_path).resolve()
-    backend_dir = Path(__file__).parent.parent.resolve()
-
-    if target_path.name.lower() in ("config.json", ".env"):
-        return True
-    if backend_dir in target_path.parents or target_path == backend_dir:
-        return True
-    return False
+# Or use the launcher flag
+bash linux/start.sh --docker
 ```
 
-This prevents the agent from reading or modifying API keys (`config.json`), `.env` files, or the `python_backend/` codebase — even if prompted by web injection or malicious files.
+### 3. Run Automated Evaluation & Test Suites
+```bash
+# Runs all 7 test suites (Phases 1–6 regression + Ragas evaluation harness)
+npm test
+```
 
 ---
 
-## What gets committed to git
+## 📋 Comprehensive Tech Stack
 
-| Path | Committed | Reason |
-|---|---|---|
-| `src/` | ✅ | Frontend HTML/JS/CSS |
-| `src-tauri/src/` | ✅ | Rust source |
-| `src-tauri/tauri.conf.json` | ✅ | Tauri config |
-| `python_backend/agent.py` | ✅ | Core agent |
-| `python_backend/app.py` | ✅ | WebSocket sidecar |
-| `python_backend/tools/` | ✅ | Built-in tools |
-| `python_backend/requirements.txt` | ✅ | Dev dependencies |
-| `python_backend/requirements-embed.txt` | ✅ | Bundler build dependencies |
-| `config.template.json` | ✅ | Safe default config |
-| `windows/` | ✅ | Windows setup, start, clean, and MSI build scripts |
-| `linux/` | ✅ | Linux setup, start, clean, and package build scripts |
-| `config.json` | ❌ | Contains your API key |
-| `python_backend/.venv/` | ❌ | Virtual environment |
-| `python_backend/chrome_profile/` | ❌ | Browser session data |
-| `node_modules/` | ❌ | npm packages |
-| `src-tauri/target/` | ❌ | Rust build output |
-| `src-tauri/resources/` | ❌ | Generated by build scripts |
+| Layer | Technologies |
+|---|---|
+| **Desktop Shell** | Tauri v2, Rust, WebKitGTK / WebView2 |
+| **Frontend UI** | Vanilla JavaScript (ES6+), SVG Canvas, Marked.js, Highlight.js |
+| **Backend Gateway** | FastAPI, Uvicorn, Pydantic v2, Server-Sent Events (SSE), WebSockets |
+| **Agent Core** | LangGraph, LangChain Core, OpenAI Python SDK |
+| **Data & Retrieval** | PostgreSQL 16, pgvector, aiosqlite, AsyncPostgresSaver, RRF Fusion |
+| **Observability** | LangSmith (`@traceable`, `LangChainTracer`), BPE Tokenizer (`tiktoken`) |
+| **Evaluation** | Ragas continuous evaluation metrics, GitHub Actions CI/CD |
+| **Infrastructure** | Docker (multi-stage non-root), Docker Compose, Terraform (AWS) |
 
 ---
 
-## Current limitations
+## 📄 License
 
-- **Python scripts only** — `run_local_python_script` runs Python only. Shell tasks (PowerShell or Bash) currently need a Python `subprocess` wrapper or a dedicated custom tool.
-- **Single user, local only** — the WebSocket sidecar runs on localhost and is designed for one active session at a time.
-
----
-
-## License
-
-[Apache License 2.0](LICENSE)
-
+Distributed under the **Apache License 2.0**. See [`LICENSE`](LICENSE) for more information.

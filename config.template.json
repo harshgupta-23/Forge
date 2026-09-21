@@ -4,5 +4,7 @@
   "API_BASE": "",
   "AGENT_WORK_DIR": "",
   "THEME": "dark",
-  "DATABASE_URL": ""
+  "DATABASE_URL": "",
+  "BACKEND_MODE": "local",
+  "BACKEND_URL": "ws://localhost:8765"
 }

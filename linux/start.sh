@@ -22,6 +22,23 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
+# Check for --docker flag
+USE_DOCKER=0
+for arg in "$@"; do
+    if [ "$arg" == "--docker" ] || [ "$arg" == "-d" ]; then
+        USE_DOCKER=1
+    fi
+done
+
+if [ "$USE_DOCKER" -eq 1 ] || [ "${CONTAINER_MODE:-0}" == "1" ]; then
+    echo "[start.sh] Starting Forge in containerized Docker mode..."
+    cd "$PROJECT_ROOT"
+    docker compose up -d --build
+    echo "[start.sh] Docker containers running on port 8765. Launching desktop interface..."
+    npx tauri dev
+    exit 0
+fi
+
 # Start Python backend in background
 cd "$PROJECT_ROOT/python_backend"
 if [ ! -f ".venv/bin/python" ]; then

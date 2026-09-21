@@ -9,6 +9,15 @@
 :: ============================================================
 echo Starting Agent...
 
+if "%1"=="--docker" (
+    echo Starting Forge in containerized Docker mode...
+    cd /d "%~dp0.."
+    docker compose up -d --build
+    echo Docker containers online. Starting desktop UI...
+    npx tauri dev
+    exit /b 0
+)
+
 if not exist "%~dp0..\python_backend\.venv" (
     echo ERROR: Python virtual environment not found in python_backend\.venv
     echo Please run windows\setup.bat first.

@@ -964,3 +964,62 @@ body.light-theme .node-token-total {
   color: var(--text-muted);
   font-size: 10px;
 }
+
+/* ── Pruned Dead-End Branches & Token Savings Styling ────────── */
+.tree-node-card.is-pruned {
+  opacity: 0.52;
+  border: 1px dashed rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.04);
+  transition: opacity 0.2s, border-color 0.2s, background-color 0.2s;
+}
+
+.tree-node-card.is-pruned:hover {
+  opacity: 0.85;
+  border-color: rgba(239, 68, 68, 0.7);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.node-pruned-badge {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-left: 4px;
+}
+
+body.light-theme .tree-node-card.is-pruned {
+  border-color: rgba(220, 38, 38, 0.35);
+  background: rgba(220, 38, 38, 0.03);
+}
+
+body.light-theme .node-pruned-badge {
+  background: rgba(220, 38, 38, 0.12);
+  border-color: rgba(220, 38, 38, 0.25);
+  color: #b91c1c;
+}
+
+.pruned-savings-pill {
+  font-family: 'Consolas', 'Fira Code', monospace;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: #34d399;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  user-select: none;
+  margin-left: 6px;
+}
+
+body.light-theme .pruned-savings-pill {
+  background: rgba(5, 150, 105, 0.12);
+  border-color: rgba(5, 150, 105, 0.25);
+  color: #059669;
+}

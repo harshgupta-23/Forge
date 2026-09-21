@@ -56,3 +56,39 @@ desktop.ini
 # ── Local Agent Documentation ─────────────────────────────────────────────────
 detailed_project_summary.md
 project_stage.md
+
+# ── Test Evaluation Reports ──────────────────────────────────────────────────
+python_backend/tests/evals/eval_report.json
+eval_report*.json
+
+# ── Terraform Infrastructure & Secrets ───────────────────────────────────────
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+crash.log
+crash.*.log
+
+# ── Docker Overrides ─────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Local SQLite & Vector Databases ──────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# ── Playwright Artifacts ─────────────────────────────────────────────────────
+test-results/
+playwright-report/
+
+# ── Python Linting & Type Checking ───────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/

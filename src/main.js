@@ -1,4 +1,9 @@
-const socket = new WebSocket('ws://localhost:8765');
+const BACKEND_WS_URL = (
+  window.__FORGE_BACKEND_URL__ ||
+  localStorage.getItem('forge_backend_url') ||
+  'ws://localhost:8765'
+);
+const socket = new WebSocket(BACKEND_WS_URL);
 
 const logsDiv      = document.getElementById('logs');
 const statusBar    = document.getElementById('agent-status-bar');
@@ -294,6 +299,15 @@ function renderTreeView(nodes, rootId, activeNodeId) {
       labelBadge.textContent = node.label;
       labelBadge.title = node.label;
       meta.appendChild(labelBadge);
+    }
+
+    if (node.is_pruned) {
+      card.classList.add('is-pruned');
+      const prunedBadge = document.createElement('span');
+      prunedBadge.className = 'node-pruned-badge';
+      prunedBadge.textContent = 'Pruned';
+      prunedBadge.title = 'Dead-end branch pruned from active context (click to revive)';
+      meta.appendChild(prunedBadge);
     }
     
     card.appendChild(meta);
@@ -648,11 +662,13 @@ socket.onmessage = (event) => {
     sessionTotalTokens = msg.content;
     if (msg.breakdown) {
       const b = msg.breakdown;
-      statusBar.innerHTML = `<span>Context: ~${Number(b.context_total).toLocaleString()} tok</span> <span class="turn-token-summary" title="User: ${b.user} | Tools: ${b.tools} | Agent: ${b.agent}">(Turn: ~${b.turn_total.toLocaleString()} tok &bull; You: ${b.user} | Tools: ${b.tools} | Agent: ${b.agent})</span>`;
+      const savingsHtml = b.pruned_savings > 0 ? ` <span class="pruned-savings-pill" title="Tokens saved via dynamic context pruning">Saved ~${Number(b.pruned_savings).toLocaleString()} tok</span>` : '';
+      statusBar.innerHTML = `<span>Context: ~${Number(b.context_total).toLocaleString()} tok</span>${savingsHtml} <span class="turn-token-summary" title="User: ${b.user} | Tools: ${b.tools} | Agent: ${b.agent}">(Turn: ~${b.turn_total.toLocaleString()} tok &bull; You: ${b.user} | Tools: ${b.tools} | Agent: ${b.agent})</span>`;
       
       const divider = document.createElement('div');
       divider.className = 'turn-summary-divider';
-      divider.innerHTML = `Turn &bull; ~${b.turn_total.toLocaleString()} tok (You: ~${b.user} &bull; Tools: ~${b.tools} &bull; Agent: ~${b.agent})`;
+      const divSavings = b.pruned_savings > 0 ? ` &bull; Saved ~${Number(b.pruned_savings).toLocaleString()} tok` : '';
+      divider.innerHTML = `Turn &bull; ~${b.turn_total.toLocaleString()} tok (You: ~${b.user} &bull; Tools: ~${b.tools} &bull; Agent: ~${b.agent}${divSavings})`;
       logsDiv.appendChild(divider);
       logsDiv.scrollTop = logsDiv.scrollHeight;
     } else {

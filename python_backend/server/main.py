@@ -2,6 +2,7 @@
 main.py — FastAPI application factory, lifespan management, and Uvicorn server runner.
 """
 
+import os
 import sys
 import threading
 import subprocess
@@ -52,6 +53,14 @@ async def lifespan(app: FastAPI):
     graph_with_cp = build_graph(checkpointer=checkpointer)
     set_compiled_graph(graph_with_cp)
 
+    # Synchronize LangSmith tracing environment
+    try:
+        from observability.tracer import sync_tracing_env
+        from server.dependencies import load_config
+        sync_tracing_env(load_config())
+    except Exception as t_err:
+        print(f"[server] Observability init notice: {t_err}")
+
     print(f"[server] Forge FastAPI backend starting up with {checkpoint_manager.backend_type} checkpointer...")
     yield
     # Teardown actions
@@ -69,9 +78,16 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
 
+    # Support dynamic CORS configuration for remote cloud/ALB deployments
+    allowed_origins_env = os.environ.get("ALLOWED_ORIGINS", "*").strip()
+    if allowed_origins_env == "*":
+        origins = ["*"]
+    else:
+        origins = [o.strip() for o in allowed_origins_env.split(",") if o.strip()]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

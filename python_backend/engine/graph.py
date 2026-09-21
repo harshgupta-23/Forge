@@ -81,7 +81,32 @@ async def stream_graph_execution(
     if checkpoint_id and checkpoint_id != "node_root":
         configurable["checkpoint_id"] = checkpoint_id
 
-    config = {"configurable": configurable}
+    # Observability & LangSmith Tracing integration
+    try:
+        from observability.tracer import get_tracing_callbacks
+        callbacks = get_tracing_callbacks(
+            thread_id=thread_id,
+            run_name=f"Forge-Turn-{thread_id or 'default'}",
+            tags=["forge", "langgraph", f"thread:{thread_id or 'default'}"],
+            metadata={
+                "session_id": thread_id,
+                "thread_id": thread_id,
+                "checkpoint_id": checkpoint_id
+            }
+        )
+    except Exception:
+        callbacks = []
+
+    config: dict[str, Any] = {
+        "configurable": configurable,
+        "callbacks": callbacks,
+        "tags": ["forge", "agentic-tree"],
+        "metadata": {
+            "session_id": thread_id,
+            "thread_id": thread_id,
+            "checkpoint_id": checkpoint_id
+        }
+    }
 
     try:
         graph = get_compiled_graph()
