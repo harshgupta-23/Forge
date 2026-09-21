@@ -117,11 +117,56 @@ def test_fastapi_app_routes():
     print("✓ test_fastapi_app_routes passed")
 
 
+def test_multi_connection_roles_and_shutdown():
+    """Verify ConnectionManager role tracking: main window ownership vs detached tree secondary sockets."""
+    from server.routes.ws import ConnectionManager, ActiveSession
+    from unittest.mock import MagicMock
+
+    mgr = ConnectionManager()
+    ws_main = MagicMock()
+    ws_tree = MagicMock()
+
+    sess_main = ActiveSession(thread_id="sess_100")
+    sess_tree = ActiveSession(thread_id="sess_100")
+
+    # Connect primary main window
+    mgr.connect(ws_main, role="main", session=sess_main)
+    assert mgr.primary_count() == 1
+    assert mgr.total_count() == 1
+    assert mgr.latest_primary_session_id == "sess_100"
+    assert ws_main in mgr.session_sockets["sess_100"]
+
+    # Connect secondary detached tree window
+    mgr.connect(ws_tree, role="secondary", session=sess_tree)
+    assert mgr.primary_count() == 1  # Primary count must not increase
+    assert mgr.total_count() == 2
+    assert ws_tree in mgr.session_sockets["sess_100"]
+
+    # Rebind session (e.g. main window loads another session)
+    mgr.rebind_session(ws_main, old_thread_id="sess_100", new_thread_id="sess_200")
+    assert mgr.latest_primary_session_id == "sess_200"
+    assert ws_main in mgr.session_sockets["sess_200"]
+    assert ws_main not in mgr.session_sockets.get("sess_100", set())
+
+    # Disconnecting secondary tree window leaves primary intact
+    mgr.disconnect(ws_tree)
+    assert mgr.primary_count() == 1
+    assert mgr.total_count() == 1
+
+    # Disconnecting primary drops primary count to 0 (shutdown trigger condition)
+    mgr.disconnect(ws_main)
+    assert mgr.primary_count() == 0
+    assert mgr.total_count() == 0
+    print("✓ test_multi_connection_roles_and_shutdown passed")
+
+
 if __name__ == "__main__":
     test_pydantic_inbound_events()
     test_gemma_strict_alternation_coalescing()
     test_strip_thoughts()
     test_langgraph_multi_node_compilation()
     test_fastapi_app_routes()
+    test_multi_connection_roles_and_shutdown()
     print("\nAll Phase 1 unit tests passed successfully!")
+
 

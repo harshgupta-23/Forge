@@ -53,7 +53,102 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 ws_router = APIRouter()
 inbound_adapter = TypeAdapter(InboundEvent)
 
-active_connections = 0
+class ConnectionManager:
+    """Tracks active WebSocket connections, roles (main vs secondary), and multi-client session broadcast."""
+    def __init__(self):
+        self.primary_connections: set[WebSocket] = set()
+        self.all_connections: set[WebSocket] = set()
+        self.session_sockets: dict[str, set[WebSocket]] = {}
+        self.socket_sessions: dict[WebSocket, 'ActiveSession'] = {}
+        self.socket_roles: dict[WebSocket, str] = {}
+        self.latest_primary_session_id: str | None = None
+
+    def connect(self, websocket: WebSocket, role: str, session: 'ActiveSession') -> None:
+        global active_connections
+        self.all_connections.add(websocket)
+        self.socket_sessions[websocket] = session
+        self.socket_roles[websocket] = role
+        if role == "main":
+            self.primary_connections.add(websocket)
+            self.latest_primary_session_id = session.thread_id
+        self.session_sockets.setdefault(session.thread_id, set()).add(websocket)
+        active_connections = len(self.all_connections)
+
+    def disconnect(self, websocket: WebSocket) -> None:
+        global active_connections
+        self.all_connections.discard(websocket)
+        self.primary_connections.discard(websocket)
+        session = self.socket_sessions.pop(websocket, None)
+        self.socket_roles.pop(websocket, None)
+        if session and session.thread_id in self.session_sockets:
+            self.session_sockets[session.thread_id].discard(websocket)
+            if not self.session_sockets[session.thread_id]:
+                del self.session_sockets[session.thread_id]
+        active_connections = len(self.all_connections)
+
+    def rebind_session(self, websocket: WebSocket, old_thread_id: str, new_thread_id: str) -> None:
+        if old_thread_id in self.session_sockets:
+            self.session_sockets[old_thread_id].discard(websocket)
+            if not self.session_sockets[old_thread_id]:
+                del self.session_sockets[old_thread_id]
+        self.session_sockets.setdefault(new_thread_id, set()).add(websocket)
+        if self.socket_roles.get(websocket) == "main":
+            self.latest_primary_session_id = new_thread_id
+
+    async def broadcast_to_session(self, thread_id: str, message: str, exclude: WebSocket | None = None) -> None:
+        sockets = list(self.session_sockets.get(thread_id, set()))
+        for ws in sockets:
+            if ws != exclude:
+                try:
+                    await ws.send_text(message)
+                except Exception:
+                    pass
+
+    async def broadcast_state_and_tree(self, thread_id: str) -> None:
+        """Pushes current state and tree data to all sockets connected to this thread_id."""
+        active_cid = session_manager.get_active_checkpoint(thread_id)
+        graph = get_compiled_graph()
+        snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": thread_id}})]
+        meta_map = await metadata_store.get_metadata_map(thread_id)
+
+        tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, meta_map)
+        effective_active = tree_dict.get("active_node_id", "node_root")
+        session_manager.set_active_checkpoint(thread_id, effective_active)
+
+        active_msgs = []
+        if effective_active != "node_root":
+            for s in snapshots:
+                cid = s.config.get("configurable", {}).get("checkpoint_id")
+                if cid == effective_active:
+                    active_msgs = s.values.get("messages", [])
+                    break
+
+        serialized_path = [serialize_message(m) for m in active_msgs if serialize_message(m) is not None]
+
+        chat_json = ChatHistoryOutbound(
+            messages=serialized_path,
+            active_node_id=effective_active
+        ).model_dump_json()
+
+        tree_json = TreeDataOutbound(
+            session_id=thread_id,
+            root_id=tree_dict.get("root_id", "node_root"),
+            active_node_id=effective_active,
+            nodes=tree_dict.get("nodes", {})
+        ).model_dump_json()
+
+        await self.broadcast_to_session(thread_id, chat_json)
+        await self.broadcast_to_session(thread_id, tree_json)
+
+    def primary_count(self) -> int:
+        return len(self.primary_connections)
+
+    def total_count(self) -> int:
+        return len(self.all_connections)
+
+
+manager = ConnectionManager()
+active_connections: int = 0
 shutdown_task: asyncio.Task | None = None
 server_instance = None
 
@@ -65,7 +160,10 @@ def set_server_instance(srv):
 
 async def delayed_shutdown(delay_seconds: int = 5):
     await asyncio.sleep(delay_seconds)
-    print(f"[server] No clients connected for {delay_seconds} seconds. Shutting down gracefully...")
+    if manager.primary_count() > 0:
+        print("[server] Primary client reconnected during grace period. Aborting shutdown.")
+        return
+    print(f"[server] No primary clients connected for {delay_seconds} seconds. Shutting down gracefully...")
     if server_instance:
         server_instance.should_exit = True
     else:
@@ -126,15 +224,24 @@ async def send_state_and_tree(websocket: WebSocket, session: ActiveSession) -> N
 @ws_router.websocket("/")
 @ws_router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global active_connections, shutdown_task
+    global shutdown_task
     await websocket.accept()
 
-    active_connections += 1
-    if shutdown_task and not shutdown_task.done():
-        shutdown_task.cancel()
-        print("[server] Client connected. Cancelled pending shutdown.")
+    role = websocket.query_params.get("role", "main").lower()
+    requested_session_id = websocket.query_params.get("session_id")
+    if role == "secondary" and not requested_session_id and manager.latest_primary_session_id:
+        requested_session_id = manager.latest_primary_session_id
 
-    session = ActiveSession()
+    session = ActiveSession(thread_id=requested_session_id)
+    manager.connect(websocket, role, session)
+
+    if role == "main":
+        if shutdown_task and not shutdown_task.done():
+            shutdown_task.cancel()
+            print("[server] Primary client connected. Cancelled pending shutdown.")
+        print(f"[server] Primary client connected (session={session.thread_id}). Total active: {manager.total_count()}")
+    else:
+        print(f"[server] Secondary client connected (role={role}, session={session.thread_id}). Total active: {manager.total_count()}")
 
     try:
         while True:
@@ -231,9 +338,23 @@ async def websocket_endpoint(websocket: WebSocket):
                     try:
                         # Check on-demand legacy migration if needed
                         await migrate_legacy_session_if_needed(target_id, get_compiled_graph())
+                        old_tid = session.thread_id
                         session.thread_id = target_id
+                        manager.rebind_session(websocket, old_tid, target_id)
+
+                        # Propagate session switch to secondary/detached windows
+                        switched_event = json.dumps({"type": "session_switched", "session_id": target_id})
+                        for ws, s in list(manager.socket_sessions.items()):
+                            if ws != websocket and manager.socket_roles.get(ws) == "secondary" and s.thread_id == old_tid:
+                                manager.rebind_session(ws, old_tid, target_id)
+                                s.thread_id = target_id
+                                try:
+                                    await ws.send_text(switched_event)
+                                except Exception:
+                                    pass
+
                         await websocket.send_text(StatusOutbound(content=f"Resumed session ({session.thread_id}).").model_dump_json())
-                        await send_state_and_tree(websocket, session)
+                        await manager.broadcast_state_and_tree(session.thread_id)
                     except Exception as exc:
                         await websocket.send_text(ErrorOutbound(content=f"Could not load session: {exc}").model_dump_json())
 
@@ -290,10 +411,25 @@ async def websocket_endpoint(websocket: WebSocket):
             elif ev_type == "clear":
                 import uuid
                 from datetime import datetime, timezone
-                session.thread_id = f"sess_{datetime.now(timezone.utc).strftime('%Y-%m-%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-                session_manager.set_active_checkpoint(session.thread_id, "node_root")
+                old_tid = session.thread_id
+                new_tid = f"sess_{datetime.now(timezone.utc).strftime('%Y-%m-%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+                session.thread_id = new_tid
+                manager.rebind_session(websocket, old_tid, new_tid)
+                session_manager.set_active_checkpoint(new_tid, "node_root")
+
+                # Propagate session switch to secondary/detached windows
+                switched_event = json.dumps({"type": "session_switched", "session_id": new_tid})
+                for ws, s in list(manager.socket_sessions.items()):
+                    if ws != websocket and manager.socket_roles.get(ws) == "secondary" and s.thread_id == old_tid:
+                        manager.rebind_session(ws, old_tid, new_tid)
+                        s.thread_id = new_tid
+                        try:
+                            await ws.send_text(switched_event)
+                        except Exception:
+                            pass
+
                 await websocket.send_text(StatusOutbound(content="Started a new session.").model_dump_json())
-                await send_state_and_tree(websocket, session)
+                await manager.broadcast_state_and_tree(new_tid)
 
             # ── undo ──────────────────────────────────────────────────────────
             elif ev_type == "undo":
@@ -302,7 +438,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(StatusOutbound(content="Undone: moved to parent branch.").model_dump_json())
                 else:
                     await websocket.send_text(StatusOutbound(content="Moved to conversation root.").model_dump_json())
-                await send_state_and_tree(websocket, session)
+                await manager.broadcast_state_and_tree(session.thread_id)
 
             # ── stop_generation ───────────────────────────────────────────────
             elif ev_type == "stop_generation":
@@ -353,7 +489,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                     await websocket.send_text(StatusOutbound(content=f"History compressed: {before:,} → {after:,} tokens.").model_dump_json())
                     await websocket.send_text(SummarisedOutbound(content=summary_text or "Summary complete.").model_dump_json())
-                    await send_state_and_tree(websocket, session)
+                    await manager.broadcast_state_and_tree(session.thread_id)
 
             # ── set_active ────────────────────────────────────────────────────
             elif ev_type == "set_active":
@@ -362,7 +498,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     session_manager.set_active_checkpoint(session.thread_id, target_cid)
                     await revive_branch_if_pruned(session.thread_id, target_cid)
                     await websocket.send_text(StatusOutbound(content="Switched active node.").model_dump_json())
-                    await send_state_and_tree(websocket, session)
+                    await manager.broadcast_state_and_tree(session.thread_id)
 
             # ── set_label ─────────────────────────────────────────────────────
             elif ev_type == "set_label":
@@ -371,7 +507,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 if target_cid:
                     await metadata_store.set_label(session.thread_id, target_cid, label)
                     await websocket.send_text(StatusOutbound(content="Updated node label.").model_dump_json())
-                    await send_state_and_tree(websocket, session)
+                    await manager.broadcast_state_and_tree(session.thread_id)
 
             # ── user_message ──────────────────────────────────────────────────
             elif ev_type == "user_message":
@@ -478,7 +614,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                 if event_type == "cancelled":
                                     await websocket.send_text(StatusOutbound(content="Generation stopped by user.").model_dump_json())
 
-                                await send_state_and_tree(websocket, session)
+                                await manager.broadcast_state_and_tree(t_id)
 
                             elif event_type == "error":
                                 await websocket.send_text(ErrorOutbound(content=str(payload)).model_dump_json())
@@ -513,7 +649,8 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         if session.generation_task and not session.generation_task.done():
             session.generation_task.cancel()
-        active_connections -= 1
-        print(f"[server] Client disconnected. Remaining active connections: {active_connections}")
-        if active_connections == 0:
+        manager.disconnect(websocket)
+        print(f"[server] Client disconnected. Remaining primaries: {manager.primary_count()}, total active: {manager.total_count()}")
+        if manager.primary_count() == 0:
+            print("[server] All primary clients disconnected. Starting 5s shutdown countdown...")
             shutdown_task = asyncio.create_task(delayed_shutdown(5))

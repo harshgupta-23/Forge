@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forge — Conversation Branches</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" id="hljs-theme" href="vendor/hljs-dark.min.css">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg-primary);
+      color: var(--text-color);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    #standalone-app {
+      display: flex;
+      flex-direction: column;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .tree-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 44px;
+      padding: 0 16px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border-color);
+      user-select: none;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+
+    .tree-toolbar-left, .tree-toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tree-toolbar-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.3px;
+    }
+
+    .tree-session-badge {
+      font-size: 11px;
+      font-family: monospace;
+      padding: 2px 8px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      color: var(--text-muted);
+    }
+
+    .tree-tool-btn {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--text-color);
+      padding: 4px 10px;
+      font-size: 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .tree-tool-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .zoom-text {
+      font-size: 12px;
+      font-family: monospace;
+      min-width: 44px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+
+    .tree-status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #888;
+      display: inline-block;
+      transition: background 0.3s ease;
+    }
+
+    .tree-status-dot.online {
+      background: #10b981;
+      box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+    }
+
+    .tree-status-dot.offline {
+      background: #ef4444;
+      box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+    }
+
+    #tree-container {
+      flex: 1;
+      width: 100%;
+      height: calc(100vh - 44px);
+      position: relative;
+      overflow: hidden;
+      cursor: grab;
+      border: none;
+      border-radius: 0;
+      background: radial-gradient(circle, var(--border-color) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+
+    #tree-container:active {
+      cursor: grabbing;
+    }
+
+    .canvas-hint {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      font-size: 11px;
+      color: var(--text-muted);
+      opacity: 0.65;
+      pointer-events: none;
+      user-select: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body class="dark-theme">
+  <div id="standalone-app">
+    <div class="tree-toolbar">
+      <div class="tree-toolbar-left">
+        <div class="tree-toolbar-title">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="6" y1="3" x2="6" y2="15"/>
+            <circle cx="18" cy="6" r="3"/>
+            <circle cx="6" cy="18" r="3"/>
+            <path d="M18 9a9 9 0 0 1-9 9"/>
+          </svg>
+          <span>Conversation Tree</span>
+        </div>
+        <span id="tree-session-badge" class="tree-session-badge">Connecting...</span>
+      </div>
+      <div class="tree-toolbar-right">
+        <button id="btn-zoom-out" class="tree-tool-btn" title="Zoom Out">−</button>
+        <span id="zoom-value" class="zoom-text">100%</span>
+        <button id="btn-zoom-in" class="tree-tool-btn" title="Zoom In">+</button>
+        <button id="btn-zoom-reset" class="tree-tool-btn" title="Reset View">⟲ Fit</button>
+        <span id="tree-status-indicator" class="tree-status-dot offline" title="Backend Connection Status"></span>
+      </div>
+    </div>
+    <div id="tree-container">
+      <div class="canvas-hint">Drag canvas to pan · Scroll to zoom · Click node to activate branch</div>
+    </div>
+  </div>
+
+  <script src="tree.js"></script>
+</body>
+</html>
+

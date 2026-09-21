@@ -1,8 +1,21 @@
-const BACKEND_WS_URL = (
+const rawWsUrl = (
   window.__FORGE_BACKEND_URL__ ||
   localStorage.getItem('forge_backend_url') ||
-  'ws://localhost:8765'
+  'ws://localhost:8765/ws'
 );
+let BACKEND_WS_URL;
+try {
+  const parsed = new URL(rawWsUrl);
+  if (!parsed.pathname || parsed.pathname === '/') {
+    parsed.pathname = '/ws';
+  }
+  if (!parsed.searchParams.has('role')) {
+    parsed.searchParams.set('role', 'main');
+  }
+  BACKEND_WS_URL = parsed.toString();
+} catch (_) {
+  BACKEND_WS_URL = rawWsUrl.includes('?') ? `${rawWsUrl}&role=main` : `${rawWsUrl}/ws?role=main`;
+}
 const socket = new WebSocket(BACKEND_WS_URL);
 
 const logsDiv      = document.getElementById('logs');
@@ -18,6 +31,7 @@ const btnSummarise = document.getElementById('btn-summarise');
 const btnTreeView  = document.getElementById('btn-tree-view');
 const treeViewPanel = document.getElementById('tree-view-panel');
 const closeTreeView = document.getElementById('close-tree-view');
+const btnDetachTree = document.getElementById('btn-detach-tree');
 const treeContainer = document.getElementById('tree-container');
 const btnFetchSession      = document.getElementById('btn-fetch-session');
 const sessionPickerPanel   = document.getElementById('session-picker-panel');
@@ -26,6 +40,55 @@ const sessionListContainer = document.getElementById('session-list-container');
 const btnStop = document.getElementById('btn-stop');
 const tokens5hEl  = document.getElementById('tokens-5h');
 const tokens24hEl = document.getElementById('tokens-24h');
+
+async function openDetachedTreeWindow() {
+  const activeSessionId = localStorage.getItem('forge_active_session_id') || '';
+  const treeUrl = `tree.html${activeSessionId ? `?session_id=${encodeURIComponent(activeSessionId)}` : ''}`;
+
+  // Tauri v2 desktop environment check
+  if (window.__TAURI__ && window.__TAURI__.webviewWindow) {
+    try {
+      const { WebviewWindow } = window.__TAURI__.webviewWindow;
+      const existing = await WebviewWindow.getByLabel('tree-view');
+      if (existing) {
+        await existing.show();
+        await existing.setFocus();
+        return;
+      }
+
+      const treeWin = new WebviewWindow('tree-view', {
+        url: treeUrl,
+        title: 'Forge — Conversation Branches',
+        width: 1050,
+        height: 750,
+        minWidth: 600,
+        minHeight: 400,
+        resizable: true,
+        center: true
+      });
+
+      treeWin.once('tauri://error', (e) => {
+        console.warn('[tauri] Error opening WebviewWindow, falling back to popup:', e);
+        window.open(treeUrl, 'ForgeTreeView', 'width=1050,height=750,resizable=yes');
+      });
+      return;
+    } catch (err) {
+      console.warn('[tauri] Error creating WebviewWindow:', err);
+    }
+  }
+
+  // Standard browser window fallback
+  const popup = window.open(treeUrl, 'ForgeTreeView', 'width=1050,height=750,resizable=yes');
+  if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+    // Popup was blocked by browser, open in-page panel instead
+    treeViewPanel.classList.remove('hidden');
+    panX = 40;
+    panY = 40;
+    zoomScale = 1.0;
+    updateTreeTransform();
+    window.dispatchEvent(new Event('resize'));
+  }
+}
 
 // ── Reusable SVG Icons (cross-platform, Linux-safe) ───────────────────────────
 const ICONS = {
@@ -556,6 +619,10 @@ toggleSettings.addEventListener('click', () => {
 });
 
 btnTreeView.addEventListener('click', () => {
+  if (window.__TAURI__ && window.__TAURI__.webviewWindow) {
+    openDetachedTreeWindow();
+    return;
+  }
   treeViewPanel.classList.toggle('hidden');
   settingsPanel.classList.add('hidden');
   if (!treeViewPanel.classList.contains('hidden')) {
@@ -567,6 +634,13 @@ btnTreeView.addEventListener('click', () => {
     window.dispatchEvent(new Event('resize'));
   }
 });
+
+if (btnDetachTree) {
+  btnDetachTree.addEventListener('click', () => {
+    treeViewPanel.classList.add('hidden');
+    openDetachedTreeWindow();
+  });
+}
 
 closeTreeView.addEventListener('click', () => {
   treeViewPanel.classList.add('hidden');
@@ -605,6 +679,9 @@ socket.onmessage = (event) => {
     document.getElementById('cfg-db').value    = msg.data.DATABASE_URL    || '';
     document.getElementById('cfg-theme').value = msg.data.THEME           || 'dark';
     applyTheme(msg.data.THEME);
+    if (msg.data.THEME) {
+      localStorage.setItem('forge_theme', msg.data.THEME);
+    }
   }
   else if (msg.type === "token_usage_windows") {
     tokens5hEl.textContent  = `5h: ~${Number(msg.last_5h).toLocaleString()}`;
@@ -614,7 +691,15 @@ socket.onmessage = (event) => {
     renderChatHistory(msg.messages);
   }
   else if (msg.type === "tree_data") {
+    if (msg.session_id) {
+      localStorage.setItem('forge_active_session_id', msg.session_id);
+    }
     renderTreeView(msg.nodes, msg.root_id, msg.active_node_id);
+  }
+  else if (msg.type === "session_switched") {
+    if (msg.session_id) {
+      localStorage.setItem('forge_active_session_id', msg.session_id);
+    }
   }
   else if (msg.type === "session_list") {
     renderSessionList(msg.sessions);
@@ -695,6 +780,9 @@ document.getElementById('save-settings').addEventListener('click', () => {
   };
   socket.send(jsonStringifyEvent("save_config", payload));
   applyTheme(payload.THEME);
+  if (payload.THEME) {
+    localStorage.setItem('forge_theme', payload.THEME);
+  }
   settingsPanel.classList.add('hidden');
   // Request fresh config echo so UI fields stay in sync with what was persisted
   setTimeout(() => socket.send(jsonStringifyEvent("get_config")), 300);

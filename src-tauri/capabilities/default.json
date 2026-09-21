@@ -3,9 +3,13 @@
   "identifier": "default",
   "description": "enables the default permissions",
   "windows": [
-    "main"
+    "*"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "core:webview:default",
+    "core:webview:allow-create-webview-window",
+    "core:window:default",
+    "core:window:allow-create"
   ]
 }

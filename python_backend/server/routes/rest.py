@@ -17,7 +17,7 @@ from server.dependencies import (
     list_available_sessions,
     SESSION_DIR
 )
-from server.routes.ws import active_connections
+from server.routes.ws import active_connections, manager
 from engine.graph import stream_graph_execution
 from langchain_core.messages import HumanMessage
 
@@ -31,7 +31,7 @@ async def health_check():
         status="ok",
         service="Forge Agent Backend",
         version="1.1.0",
-        active_connections=active_connections
+        active_connections=manager.total_count()
     )
 
 
