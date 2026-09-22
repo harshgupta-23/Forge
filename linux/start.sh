@@ -8,6 +8,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Workaround for WebKitGTK WebProcess crash under WSL2 / WSLg software rendering
+export WEBKIT_DISABLE_DMABUF_RENDERER=1
+export WEBKIT_DISABLE_COMPOSITING_MODE=1
+export GDK_BACKEND=x11
+export LIBGL_ALWAYS_SOFTWARE=1
+
 echo "Starting Forge Agent..."
 
 BACKEND_PID=""

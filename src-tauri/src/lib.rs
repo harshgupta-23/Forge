@@ -14,6 +14,15 @@ struct Sidecar(Mutex<Option<std::process::Child>>);
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+  #[cfg(target_os = "linux")]
+  {
+    // WebKitGTK 2.42+ DMA-BUF renderer crashes inside WSLg / virtualized Mesa environments,
+    // resulting in a blank screen with a broken filmstrip icon. Disabling DMA-BUF renderer fixes this.
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+      std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+  }
+
   tauri::Builder::default()
     .manage(Sidecar(Mutex::new(None)))
     .setup(|app| {
