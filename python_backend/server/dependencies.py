@@ -97,6 +97,9 @@ def load_config() -> dict[str, Any]:
             save_config({
                 "API_KEY": "",
                 "MODEL": "gemma-4-26b-a4b-it",
+                "MODEL_PLANNER": "",
+                "MODEL_SUMMARIZER": "",
+                "MODEL_RERANKER": "",
                 "API_BASE": "https://generativelanguage.googleapis.com/v1beta/openai/",
                 "AGENT_WORK_DIR": str(AGENT_HOME / "agent_outputs"),
                 "DATABASE_URL": "",
@@ -115,9 +118,36 @@ def save_config(data: dict[str, Any]) -> None:
 
 
 def apply_config_to_env(cfg: dict[str, Any]) -> None:
-    for key in ("API_KEY", "MODEL", "API_BASE", "AGENT_WORK_DIR", "DATABASE_URL"):
+    config_keys = (
+        "API_KEY",
+        "MODEL",
+        "MODEL_PLANNER",
+        "MODEL_SUMMARIZER",
+        "MODEL_RERANKER",
+        "API_BASE",
+        "API_BASE_PLANNER",
+        "API_BASE_SUMMARIZER",
+        "API_BASE_RERANKER",
+        "API_KEY_PLANNER",
+        "API_KEY_SUMMARIZER",
+        "API_KEY_RERANKER",
+        "AGENT_WORK_DIR",
+        "DATABASE_URL"
+    )
+    for key in config_keys:
         if key in cfg:
-            os.environ[key] = str(cfg[key])
+            val = str(cfg[key]).strip()
+            if val or key in ("API_KEY", "MODEL", "API_BASE", "AGENT_WORK_DIR", "DATABASE_URL"):
+                os.environ[key] = val
+            elif key in os.environ and not val:
+                # Remove empty override so fallback takes effect
+                del os.environ[key]
+
+    try:
+        from engine.utils import clear_async_client_cache
+        clear_async_client_cache()
+    except Exception:
+        pass
 
 
 # Apply configuration at import time

@@ -79,12 +79,13 @@ Traditional AI assistants force users into linear, fragile chat threads where co
 
 ## ⚡ Key Engineering Highlights
 
-### 1. Multi-Node LangGraph Execution Loop
-Decomposes complex requests into discrete, observable steps:
-- **`planner`**: Analyzes user intent, attached documents, and past turns to formulate execution plans.
-- **`agent`**: Streams reasoning tokens and invokes structured tools via native function calling schemas. Enforces strict alternation to prevent back-to-back same-role turns on strict models (e.g. Gemma).
+### 1. Multi-Node LangGraph Loop & Role-Decoupled Models
+Decomposes complex requests into discrete, observable steps with role-specific model specialization:
+- **`planner`**: Intelligent task decomposition (`MODEL_PLANNER`) formulating execution plans before actions start.
+- **`agent`**: Real async token-by-token streaming (`MODEL`) via `AsyncOpenAI`, with XML tag suppression buffering and balanced bracket fallback parsing.
 - **`tools`**: Concurrent async tool execution with automatic exception isolation and parameter fallbacks.
-- **`evaluator`**: Quality critic scoring tool success and managing conditional graph traversal or termination.
+- **`evaluator` & `recovery`**: Two-strike self-healing guardrail. On repeated failure, routes to `recovery` with schema-compliant `ToolMessage` reflection before terminating infinite loops.
+- **`summarizer`**: Hierarchical subtree summarization (`MODEL_SUMMARIZER`) compressing historical turns without context degradation.
 
 ### 2. Algorithmic Context Pruning & Hierarchical Summaries
 - **Dead-end Tombstoning**: Verbose tracebacks and failed commands are replaced with single-line tombstones as soon as a retry succeeds, preventing catastrophic hallucination loops.
@@ -131,7 +132,7 @@ Decomposes complex requests into discrete, observable steps:
 - **Linux Bubblewrap (`bwrap`) Filesystem Isolation**: Mounts an isolated filesystem (`--ro-bind / /`, `--tmpfs ~/.ssh`, `--tmpfs ~/.aws`) for Python scripts while preserving network egress for legitimate external requests.
 - **AST Static Code Analysis**: Pre-execution AST inspection blocks dangerous modules (`pty`, `winreg`, `ctypes`) and dynamic execution primitives (`eval`, `exec`).
 - **DLP Secret Masking & XML Delimiters**: Automatic outbound token redaction (OpenAI, Anthropic, GitHub, AWS, private keys, database URLs) and structured `<tool_output name="..." safe_data_only="true">` delimiters to mitigate indirect prompt injection.
-- **Repetition Loop Deduplication**: Detects stuck ping-pong loops by comparing canonical tool invocations following errors, backed by a 15-iteration hard ceiling.
+- **Two-Strike Loop Recovery**: Detects repeated tool failures with identical arguments; Strike 1 injects schema-compliant reflection guidance to steer the agent to alternative tools, while Strike 2 enforces a hard termination to prevent token drain.
 
 ### Instant Tool Extensibility
 Drop any Python file decorated with `@tool` into `python_backend/tools/` or `~/.forge/tools/`:

@@ -80,7 +80,7 @@ async def tools_node(state: AgentState, config: RunnableConfig = None) -> dict[s
 
         args_preview = _fmt_args(args)
         if queue:
-            await queue.put(("tool_start", f"⚙  {tool_name}({args_preview})"))
+            await queue.put(("tool_start", f"{tool_name}({args_preview})"))
 
         if tool_name not in tool_map:
             result_str = f"[Error]: Unknown tool '{tool_name}'"
@@ -110,7 +110,7 @@ async def tools_node(state: AgentState, config: RunnableConfig = None) -> dict[s
         toks = estimate_tokens(delimited_content)
         summary = next((ln.strip() for ln in sanitized_result.splitlines() if ln.strip()), "")[:80]
         if queue:
-            await queue.put(("tool_done", (f"  ✓  {tool_name} → {summary}", toks)))
+            await queue.put(("tool_done", (f"{tool_name} → {summary}", toks)))
 
         tool_messages.append(ToolMessage(
             content=delimited_content,

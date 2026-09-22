@@ -123,7 +123,7 @@ def should_continue(state: AgentState, config: RunnableConfig = None) -> Literal
                 queue = cfg.get("queue")
                 if queue:
                     try:
-                        queue.put_nowait(("status", f"⚠ {reason} Repeated after warning. Halting."))
+                        queue.put_nowait(("status", f"[Alert] {reason} Repeated after warning. Halting."))
                     except Exception:
                         pass
                 return END
@@ -132,7 +132,7 @@ def should_continue(state: AgentState, config: RunnableConfig = None) -> Literal
             queue = cfg.get("queue")
             if queue:
                 try:
-                    queue.put_nowait(("status", f"⚠ {reason} Injected recovery guidance."))
+                    queue.put_nowait(("status", f"[Alert] {reason} Injected recovery guidance."))
                 except Exception:
                     pass
             return "recovery"

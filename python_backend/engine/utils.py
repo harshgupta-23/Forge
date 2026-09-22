@@ -64,11 +64,18 @@ def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
     """
     Constructs OpenAI client configuring Google AI Studio query param keys,
     OpenRouter metadata, or standard OpenAI-compatible endpoints.
-    Resolves model based on role ('agent', 'planner', 'summarizer').
+    Resolves model and optional credentials based on role ('agent', 'planner', 'summarizer', 'reranker').
     Returns (client, model_name).
     """
-    base_url = os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/").strip()
-    api_key = os.environ.get("API_KEY", "").strip()
+    role_upper = role.upper()
+    base_url = (
+        os.environ.get(f"API_BASE_{role_upper}")
+        or os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    ).strip()
+    api_key = (
+        os.environ.get(f"API_KEY_{role_upper}")
+        or os.environ.get("API_KEY", "")
+    ).strip()
 
     if role == "planner":
         model = os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
@@ -82,7 +89,7 @@ def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
 
     if not api_key:
         raise RuntimeError(
-            "CRITICAL: API_KEY is missing or blank. Please open Settings in the UI to add your API key."
+            f"CRITICAL: API_KEY for role '{role}' is missing or blank. Please open Settings in the UI to add your API key."
         )
 
     parsed_url = urlparse(base_url)
@@ -121,21 +128,33 @@ def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
 _ASYNC_CLIENT_CACHE: dict[tuple[str, str, str], AsyncOpenAI] = {}
 
 
+def clear_async_client_cache() -> None:
+    """Clears cached AsyncOpenAI client instances upon config updates."""
+    _ASYNC_CLIENT_CACHE.clear()
+
+
 def get_async_openai_client(role: str = "agent") -> tuple[AsyncOpenAI, str]:
     """
-    Constructs or retrieves a cached AsyncOpenAI client, resolving models by role:
+    Constructs or retrieves a cached AsyncOpenAI client, resolving models and endpoints by role:
     - "agent": Primary reasoning model (MODEL, default: gemma-4-26b-a4b-it)
     - "planner": Lightweight planner model (MODEL_PLANNER, fallback: MODEL)
     - "summarizer": High-throughput summarizer model (MODEL_SUMMARIZER, fallback: MODEL)
     - "reranker": Fast cross-encoder reranker model (MODEL_RERANKER, fallback: MODEL_PLANNER or MODEL)
     Returns (async_client, model_name).
     """
-    base_url = os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/").strip()
-    api_key = os.environ.get("API_KEY", "").strip()
+    role_upper = role.upper()
+    base_url = (
+        os.environ.get(f"API_BASE_{role_upper}")
+        or os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    ).strip()
+    api_key = (
+        os.environ.get(f"API_KEY_{role_upper}")
+        or os.environ.get("API_KEY", "")
+    ).strip()
 
     if not api_key:
         raise RuntimeError(
-            "CRITICAL: API_KEY is missing or blank. Please open Settings in the UI to add your API key."
+            f"CRITICAL: API_KEY for role '{role}' is missing or blank. Please open Settings in the UI to add your API key."
         )
 
     # Role-based model decoupling

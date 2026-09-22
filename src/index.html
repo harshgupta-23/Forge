@@ -61,7 +61,9 @@
           <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           Detach
         </button>
-        <button id="close-tree-view" style="padding: 2px 8px; font-size: 14px;">✕</button>
+        <button id="close-tree-view" style="display: flex; align-items: center; justify-content: center; padding: 4px 8px;" title="Close Tree View">
+          <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
       </div>
     </div>
     <div id="tree-container"></div>
@@ -74,38 +76,302 @@
         <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
         Previous Sessions
       </h3>
-      <button id="close-session-picker" style="padding: 2px 8px; font-size: 14px;">✕</button>
+      <button id="close-session-picker" style="display: flex; align-items: center; justify-content: center; padding: 4px 8px;" title="Close Session Picker">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
     <div id="session-list-container"></div>
   </div>
 
-  <div id="settings-panel" class="hidden">
-    <div class="panel-header">
-      <h3 style="margin: 0;">Environment Configuration</h3>
-      <button id="close-settings" style="padding: 2px 8px; font-size: 14px;">✕</button>
+  <div id="settings-panel" class="settings-modal-overlay hidden">
+    <div id="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-dialog-title">
+      <!-- Modal Header -->
+      <div class="settings-header">
+        <div class="settings-header-left">
+          <svg class="icon settings-header-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <div class="settings-title-wrap">
+            <h3 id="settings-dialog-title" style="margin: 0; font-size: 16px; font-weight: 600;">Settings</h3>
+            <span class="settings-subtitle">Configure model routing, API credentials, and runtime subsystems</span>
+          </div>
+        </div>
+        <button id="close-settings" class="settings-close-btn" title="Close Settings (Esc)">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+        </button>
+      </div>
+
+      <!-- Modal Body (Two-Pane) -->
+      <div class="settings-body">
+        <!-- Sidebar Navigation -->
+        <nav class="settings-sidebar">
+          <button type="button" class="settings-tab-btn active" data-tab="api">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a4 4 0 0 1 4 4v2a4 4 0 0 1-8 0V6a4 4 0 0 1 4-4z"/><rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1"/><circle cx="15" cy="14" r="1"/></svg>
+            <span>Models & API</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="workspace">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>Workspace</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="storage">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+            <span>Storage & DB</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="rag">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span>RAG & Search</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="security">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Security</span>
+          </button>
+          <button type="button" class="settings-tab-btn" data-tab="appearance">
+            <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+            <span>Appearance</span>
+          </button>
+        </nav>
+
+        <!-- Right Content Panes -->
+        <main class="settings-content">
+          <!-- 1. MERGED MODELS & API ENDPOINTS PANE -->
+          <div class="settings-pane active" id="pane-api">
+            <div class="settings-pane-header">
+              <h4 style="margin: 0 0 4px; font-size: 15px;">Models & API Endpoints</h4>
+              <p class="settings-pane-desc">Configure active model routing, API gateways, and authentication credentials.</p>
+            </div>
+
+            <!-- Prestored Provider Templates / Quick Switch -->
+            <div class="settings-section" style="margin-bottom: 16px;">
+              <label class="settings-section-title">Prestored Provider Templates</label>
+              <span class="field-desc" style="display: block; margin-bottom: 8px;">
+                Apply tested model stacks and gateway endpoints in one click. Existing API keys are never overwritten.
+              </span>
+              <div class="preset-chips">
+                <button type="button" class="preset-chip" data-preset="gemini">
+                  <span class="preset-dot gemini"></span>Google Gemini
+                </button>
+                <button type="button" class="preset-chip" data-preset="claude">
+                  <span class="preset-dot claude"></span>Claude (OpenRouter)
+                </button>
+                <button type="button" class="preset-chip" data-preset="openai">
+                  <span class="preset-dot openai"></span>OpenAI (GPT-4o)
+                </button>
+                <button type="button" class="preset-chip" data-preset="ollama">
+                  <span class="preset-dot ollama"></span>Local Ollama
+                </button>
+              </div>
+            </div>
+
+            <!-- Global / Primary Agent Section -->
+            <div class="settings-section" style="margin-bottom: 16px;">
+              <label class="settings-section-title">Primary Agent Configuration (Global Defaults)</label>
+              <div class="form-group" style="margin-top: 10px;">
+                <label for="cfg-model">
+                  Primary Agent Model <span class="badge-role badge-primary">MODEL</span>
+                  <span class="field-desc">Used for core code generation, tool calls, and high-reasoning execution in <code>agent.py</code>.</span>
+                </label>
+                <input type="text" id="cfg-model" placeholder="e.g. gemma-4-26b-a4b-it or claude-3-5-sonnet">
+              </div>
+
+              <div class="form-group">
+                <label for="cfg-key">
+                  Global API Key
+                  <span class="field-desc">Required for API requests. Stored locally in <code>config.json</code> and never transmitted outside your runtime.</span>
+                </label>
+                <div class="password-input-wrap">
+                  <input type="password" id="cfg-key" placeholder="Enter API Key (sk-... or AIza...)">
+                  <button type="button" id="toggle-key-visibility" class="btn-input-icon" title="Toggle visibility" aria-label="Toggle visibility">
+                    <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 4px;">
+                <label for="cfg-base">
+                  Global API Base URL
+                  <span class="field-desc">Target OpenAI-compatible gateway (Google AI Studio, OpenRouter, Local vLLM/Ollama, etc.).</span>
+                </label>
+                <input type="text" id="cfg-base" placeholder="https://generativelanguage.googleapis.com/v1beta/openai/">
+              </div>
+            </div>
+
+            <!-- Role Overrides -->
+            <details class="settings-advanced-details" open>
+              <summary style="font-size: 13px; font-weight: 600;">Role-Specific Model, Key & Endpoint Overrides (Optional)</summary>
+              <p class="settings-hint">Leave blank to inherit the Primary Model, Global API Key, and Global Base URL above.</p>
+
+              <!-- Planner Role -->
+              <div class="role-override-card" style="margin-top: 10px; padding: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 6px;">
+                <strong style="font-size: 12.5px; color: var(--text-main);">Planner Role <span class="badge-role">MODEL_PLANNER</span></strong>
+                <span class="field-desc">Task decomposition and milestone planning in <code>planner.py</code>.</span>
+                <input type="text" id="cfg-model-planner" placeholder="Inherit from primary" style="margin-top: 6px;">
+                <div style="display: flex; gap: 8px; margin-top: 6px;">
+                  <input type="password" id="cfg-key-planner" placeholder="Optional API_KEY_PLANNER" style="flex: 1;">
+                  <input type="text" id="cfg-base-planner" placeholder="Optional API_BASE_PLANNER" style="flex: 1;">
+                </div>
+              </div>
+
+              <!-- Summarizer Role -->
+              <div class="role-override-card" style="margin-top: 10px; padding: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 6px;">
+                <strong style="font-size: 12.5px; color: var(--text-main);">Summarizer Role <span class="badge-role">MODEL_SUMMARIZER</span></strong>
+                <span class="field-desc">Hierarchical conversation history compaction in <code>summarizer.py</code>.</span>
+                <input type="text" id="cfg-model-summarizer" placeholder="Inherit from primary" style="margin-top: 6px;">
+                <div style="display: flex; gap: 8px; margin-top: 6px;">
+                  <input type="password" id="cfg-key-summarizer" placeholder="Optional API_KEY_SUMMARIZER" style="flex: 1;">
+                  <input type="text" id="cfg-base-summarizer" placeholder="Optional API_BASE_SUMMARIZER" style="flex: 1;">
+                </div>
+              </div>
+
+              <!-- Reranker Role -->
+              <div class="role-override-card" style="margin-top: 10px; padding: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 6px;">
+                <strong style="font-size: 12.5px; color: var(--text-main);">Reranker Role <span class="badge-role">MODEL_RERANKER</span></strong>
+                <span class="field-desc">Cross-encoder candidate snippet scoring in <code>reranker.py</code>.</span>
+                <input type="text" id="cfg-model-reranker" placeholder="Inherit from planner / primary" style="margin-top: 6px;">
+                <div style="display: flex; gap: 8px; margin-top: 6px;">
+                  <input type="password" id="cfg-key-reranker" placeholder="Optional API_KEY_RERANKER" style="flex: 1;">
+                  <input type="text" id="cfg-base-reranker" placeholder="Optional API_BASE_RERANKER" style="flex: 1;">
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <!-- 3. WORKSPACE PANE -->
+          <div class="settings-pane" id="pane-workspace">
+            <div class="settings-pane-header">
+              <h4 style="margin: 0 0 4px; font-size: 15px;">Workspace & Environment</h4>
+              <p class="settings-pane-desc">Manage local file path boundaries and execution settings.</p>
+            </div>
+
+            <div class="form-group">
+              <label for="cfg-dir">
+                Agent Output & Working Directory
+                <span class="field-desc">Root folder for created code artifacts, scripts, and logs. File tools are strictly jailed here.</span>
+              </label>
+              <input type="text" id="cfg-dir" placeholder="e.g. /home/user/projects/Forge/agent_outputs">
+            </div>
+          </div>
+
+          <!-- 4. STORAGE PANE -->
+          <div class="settings-pane" id="pane-storage">
+            <div class="settings-pane-header">
+              <h4 style="margin: 0 0 4px; font-size: 15px;">Storage & Checkpoints</h4>
+              <p class="settings-pane-desc">Configure the persistence layer for LangGraph checkpoints and metadata.</p>
+            </div>
+
+            <div class="form-group">
+              <label for="cfg-db">
+                PostgreSQL Connection URI (pgvector)
+                <span class="field-desc">Leave blank for local zero-config SQLite checkpointing (<code>~/.forge/forge_checkpoints.db</code>).</span>
+              </label>
+              <input type="text" id="cfg-db" placeholder="postgresql://postgres:postgres@localhost:5432/forge">
+            </div>
+
+            <div class="settings-info-card">
+              <div class="info-card-header">
+                <span class="info-badge-ok">● Enabled</span>
+                <strong>Stateful Time-Travel Checkpointing</strong>
+              </div>
+              <p class="info-card-text">Every conversational turn is automatically snapshotted. When PostgreSQL is unavailable, Forge falls back to local SQLite seamlessly.</p>
+            </div>
+          </div>
+
+          <!-- 5. RAG PANE -->
+          <div class="settings-pane" id="pane-rag">
+            <div class="settings-pane-header">
+              <h4 style="margin: 0 0 4px; font-size: 15px;">RAG & Semantic Retrieval</h4>
+              <p class="settings-pane-desc">Configuration for vector indexing and document grounding over attached knowledge files.</p>
+            </div>
+
+            <div class="settings-info-card">
+              <div class="info-card-header">
+                <strong>Embedding Pipeline</strong>
+              </div>
+              <p class="info-card-text">
+                • Model: <code>text-embedding-3-small</code> (1536 dims)<br>
+                • Chunking: Recursive Character Splitting (800 tokens, 100 overlap)<br>
+                • Reranking: Cross-Encoder LLM validation over top-10 candidate pool
+              </p>
+            </div>
+          </div>
+
+          <!-- 6. SECURITY PANE -->
+          <div class="settings-pane" id="pane-security">
+            <div class="settings-pane-header">
+              <h4 style="margin: 0 0 4px; font-size: 15px;">Security Guardrails</h4>
+              <p class="settings-pane-desc">Active defense-in-depth safety layers protecting your local system.</p>
+            </div>
+
+            <div class="guardrail-status-grid">
+              <div class="guardrail-card active">
+                <div class="guardrail-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                </div>
+                <div class="guardrail-info">
+                  <strong>Path Jail Containment</strong>
+                  <span>Blocks reads/writes outside workspace; forbids system and credential paths (.env, ~/.ssh, /etc).</span>
+                </div>
+              </div>
+
+              <div class="guardrail-card active">
+                <div class="guardrail-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                </div>
+                <div class="guardrail-info">
+                  <strong>Secret DLP Masking</strong>
+                  <span>Redacts OpenAI/AWS/GitHub API keys, tokens, and database passwords from outbound text.</span>
+                </div>
+              </div>
+
+              <div class="guardrail-card active">
+                <div class="guardrail-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.31L4.69 18.06A2 2 0 0 0 6.41 21h11.18a2 2 0 0 0 1.72-2.94L14 9.31V2"></path><line x1="8" y1="2" x2="16" y2="2"></line><line x1="7" y1="15" x2="17" y2="15"></line></svg>
+                </div>
+                <div class="guardrail-info">
+                  <strong>AST Code Inspection</strong>
+                  <span>Scans script syntax before execution, preventing dynamic eval() and restricted ctypes access.</span>
+                </div>
+              </div>
+
+              <div class="guardrail-card active">
+                <div class="guardrail-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                </div>
+                <div class="guardrail-info">
+                  <strong>Two-Strike Loop Recovery</strong>
+                  <span>Injects self-healing guidance on repeated failure before terminating infinite tool loops.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 7. APPEARANCE PANE -->
+          <div class="settings-pane" id="pane-appearance">
+            <div class="settings-pane-header">
+              <h4 style="margin: 0 0 4px; font-size: 15px;">Visual Appearance</h4>
+              <p class="settings-pane-desc">Select visual interface scheme and contrast.</p>
+            </div>
+
+            <div class="form-group">
+              <label for="cfg-theme">Visual Interface Scheme</label>
+              <select id="cfg-theme">
+                <option value="dark">Dark Theme (Default)</option>
+                <option value="light">Light Theme</option>
+              </select>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="settings-footer">
+        <span id="settings-status" class="settings-status-msg"></span>
+        <div class="settings-footer-actions">
+          <button type="button" id="cancel-settings" class="btn-settings-cancel">Cancel</button>
+          <button type="button" id="save-settings" class="btn-settings-save">Commit Setup Changes</button>
+        </div>
+      </div>
     </div>
-    <label>API Key:
-      <input type="password" id="cfg-key" placeholder="Enter API Key">
-    </label>
-    <label>API Base URL:
-      <input type="text" id="cfg-base" placeholder="https://openrouter.ai/api/v1">
-    </label>
-    <label>Active Engine Model:
-      <input type="text" id="cfg-model">
-    </label>
-    <label>Working Output Path:
-      <input type="text" id="cfg-dir">
-    </label>
-    <label>Database URL:
-      <input type="text" id="cfg-db" placeholder="postgresql://postgres:postgres@localhost:5432/forge (leave blank for SQLite)">
-    </label>
-    <label>Visual Interface Scheme:
-      <select id="cfg-theme">
-        <option value="dark">Dark Theme</option>
-        <option value="light">Light Theme</option>
-      </select>
-    </label>
-    <button id="save-settings">Commit Setup Changes</button>
   </div>
 
   <div id="terminal-chat">

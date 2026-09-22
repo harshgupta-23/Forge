@@ -99,7 +99,12 @@ const ICONS = {
   PLAY: `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`,
   ZAP: `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
   CLIP: `<svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`,
-  ALERT: `<svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+  ALERT: `<svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+  USER: `<svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  BOT: `<svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`,
+  EYE: `<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  EYE_OFF: `<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`,
+  CLOSE: `<svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
 };
 
 // ── Global Pan and Zoom state (n8n-style) ──────────────────────────────────────
@@ -408,9 +413,9 @@ function renderTreeView(nodes, rootId, activeNodeId) {
       tokenBox.innerHTML = `
         <span class="node-token-total" title="Total Turn Tokens">~${totTok.toLocaleString()} tok</span>
         <span class="node-token-detail">
-          <span title="User prompt tokens">👤 ${uTok}</span>
-          ${tTok > 0 ? `<span title="Tool tokens">⚙ ${tTok}</span>` : ''}
-          <span title="Agent output tokens">🤖 ${aTok}</span>
+          <span title="User prompt tokens">${ICONS.USER} ${uTok}</span>
+          ${tTok > 0 ? `<span title="Tool tokens">${ICONS.GEAR} ${tTok}</span>` : ''}
+          <span title="Agent output tokens">${ICONS.BOT} ${aTok}</span>
         </span>
       `;
       card.appendChild(tokenBox);
@@ -675,6 +680,34 @@ socket.onmessage = (event) => {
     document.getElementById('cfg-key').value   = msg.data.API_KEY  || '';
     document.getElementById('cfg-base').value  = msg.data.API_BASE || '';
     document.getElementById('cfg-model').value = msg.data.MODEL    || '';
+
+    const modelPlannerEl = document.getElementById('cfg-model-planner');
+    if (modelPlannerEl) modelPlannerEl.value = msg.data.MODEL_PLANNER || '';
+
+    const modelSummarizerEl = document.getElementById('cfg-model-summarizer');
+    if (modelSummarizerEl) modelSummarizerEl.value = msg.data.MODEL_SUMMARIZER || '';
+
+    const modelRerankerEl = document.getElementById('cfg-model-reranker');
+    if (modelRerankerEl) modelRerankerEl.value = msg.data.MODEL_RERANKER || '';
+
+    const keyPlannerEl = document.getElementById('cfg-key-planner');
+    if (keyPlannerEl) keyPlannerEl.value = msg.data.API_KEY_PLANNER || '';
+
+    const basePlannerEl = document.getElementById('cfg-base-planner');
+    if (basePlannerEl) basePlannerEl.value = msg.data.API_BASE_PLANNER || '';
+
+    const keySummarizerEl = document.getElementById('cfg-key-summarizer');
+    if (keySummarizerEl) keySummarizerEl.value = msg.data.API_KEY_SUMMARIZER || '';
+
+    const baseSummarizerEl = document.getElementById('cfg-base-summarizer');
+    if (baseSummarizerEl) baseSummarizerEl.value = msg.data.API_BASE_SUMMARIZER || '';
+
+    const keyRerankerEl = document.getElementById('cfg-key-reranker');
+    if (keyRerankerEl) keyRerankerEl.value = msg.data.API_KEY_RERANKER || '';
+
+    const baseRerankerEl = document.getElementById('cfg-base-reranker');
+    if (baseRerankerEl) baseRerankerEl.value = msg.data.API_BASE_RERANKER || '';
+
     document.getElementById('cfg-dir').value   = msg.data.AGENT_WORK_DIR  || '';
     document.getElementById('cfg-db').value    = msg.data.DATABASE_URL    || '';
     document.getElementById('cfg-theme').value = msg.data.THEME           || 'dark';
@@ -682,6 +715,7 @@ socket.onmessage = (event) => {
     if (msg.data.THEME) {
       localStorage.setItem('forge_theme', msg.data.THEME);
     }
+    updateModelPlaceholders();
   }
   else if (msg.type === "token_usage_windows") {
     tokens5hEl.textContent  = `5h: ~${Number(msg.last_5h).toLocaleString()}`;
@@ -768,20 +802,172 @@ socket.onmessage = (event) => {
   }
 };
 
-// ── Settings ───────────────────────────────────────────────────────────────────
+// ── Settings Sidebar & Modal Controllers ─────────────────────────────────────────
+function updateModelPlaceholders() {
+  const primaryModel = (document.getElementById('cfg-model')?.value || '').trim() || 'gemma-4-26b-a4b-it';
+  const plannerEl = document.getElementById('cfg-model-planner');
+  if (plannerEl) {
+    plannerEl.placeholder = `Inherit from primary (${primaryModel})`;
+  }
+  const summarizerEl = document.getElementById('cfg-model-summarizer');
+  if (summarizerEl) {
+    summarizerEl.placeholder = `Inherit from primary (${primaryModel})`;
+  }
+  const rerankerEl = document.getElementById('cfg-model-reranker');
+  if (rerankerEl) {
+    const plannerModel = (plannerEl?.value || '').trim() || primaryModel;
+    rerankerEl.placeholder = `Inherit from planner (${plannerModel})`;
+  }
+}
+
+// Live update placeholders when typing in model fields
+document.getElementById('cfg-model')?.addEventListener('input', updateModelPlaceholders);
+document.getElementById('cfg-model-planner')?.addEventListener('input', updateModelPlaceholders);
+
+// Tab switching inside settings dialog
+document.querySelectorAll('.settings-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.settings-tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.settings-pane').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    const targetId = `pane-${btn.dataset.tab}`;
+    const pane = document.getElementById(targetId);
+    if (pane) pane.classList.add('active');
+  });
+});
+
+// Quick provider presets — NEVER clobbers existing API key
+const PROVIDER_PRESETS = {
+  gemini: {
+    name: 'Google Gemini',
+    base: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+    model: 'gemma-4-26b-a4b-it',
+    planner: 'gemini-1.5-flash',
+    summarizer: 'gemini-1.5-flash',
+    reranker: 'gemini-1.5-flash'
+  },
+  claude: {
+    name: 'Anthropic Claude',
+    base: 'https://openrouter.ai/api/v1',
+    model: 'anthropic/claude-3.5-sonnet',
+    planner: 'anthropic/claude-3.5-haiku',
+    summarizer: 'anthropic/claude-3.5-haiku',
+    reranker: 'anthropic/claude-3.5-haiku'
+  },
+  openai: {
+    name: 'OpenAI GPT-4o',
+    base: 'https://api.openai.com/v1',
+    model: 'gpt-4o',
+    planner: 'gpt-4o-mini',
+    summarizer: 'gpt-4o-mini',
+    reranker: 'gpt-4o-mini'
+  },
+  ollama: {
+    name: 'Local Ollama',
+    base: 'http://localhost:11434/v1',
+    model: 'llama3.1:8b',
+    planner: 'qwen2.5:3b',
+    summarizer: 'qwen2.5:3b',
+    reranker: 'qwen2.5:3b'
+  }
+};
+
+document.querySelectorAll('.preset-chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const preset = PROVIDER_PRESETS[chip.dataset.preset];
+    if (!preset) return;
+
+    // Overwrite only models and base URL — API Key is explicitly preserved
+    const baseEl = document.getElementById('cfg-base');
+    const modelEl = document.getElementById('cfg-model');
+    const plannerEl = document.getElementById('cfg-model-planner');
+    const summarizerEl = document.getElementById('cfg-model-summarizer');
+    const rerankerEl = document.getElementById('cfg-model-reranker');
+
+    if (baseEl) baseEl.value = preset.base;
+    if (modelEl) modelEl.value = preset.model;
+    if (plannerEl) plannerEl.value = preset.planner;
+    if (summarizerEl) summarizerEl.value = preset.summarizer;
+    if (rerankerEl) rerankerEl.value = preset.reranker;
+
+    updateModelPlaceholders();
+
+    const statusEl = document.getElementById('settings-status');
+    if (statusEl) {
+      statusEl.textContent = `Applied ${preset.name} template.`;
+      setTimeout(() => { if (statusEl.textContent.includes('Applied')) statusEl.textContent = ''; }, 3500);
+    }
+  });
+});
+
+// Password visibility toggle for API key
+const toggleKeyBtn = document.getElementById('toggle-key-visibility');
+if (toggleKeyBtn) {
+  toggleKeyBtn.addEventListener('click', () => {
+    const keyInput = document.getElementById('cfg-key');
+    if (!keyInput) return;
+    if (keyInput.type === 'password') {
+      keyInput.type = 'text';
+      toggleKeyBtn.innerHTML = ICONS.EYE_OFF;
+      toggleKeyBtn.title = "Hide API Key";
+    } else {
+      keyInput.type = 'password';
+      toggleKeyBtn.innerHTML = ICONS.EYE;
+      toggleKeyBtn.title = "Show API Key";
+    }
+  });
+}
+
+// Cancel & Backdrop dismiss
+const cancelSettingsBtn = document.getElementById('cancel-settings');
+if (cancelSettingsBtn) {
+  cancelSettingsBtn.addEventListener('click', () => {
+    settingsPanel.classList.add('hidden');
+  });
+}
+
+// Click on backdrop scrim outside dialog closes modal
+settingsPanel.addEventListener('click', (e) => {
+  if (e.target === settingsPanel) {
+    settingsPanel.classList.add('hidden');
+  }
+});
+
+// Escape key dismisses modal
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !settingsPanel.classList.contains('hidden')) {
+    settingsPanel.classList.add('hidden');
+  }
+});
+
+// Save settings handler
 document.getElementById('save-settings').addEventListener('click', () => {
   const payload = {
-    API_KEY:  document.getElementById('cfg-key').value.trim(),
-    API_BASE: document.getElementById('cfg-base').value.trim(),
-    MODEL:    document.getElementById('cfg-model').value.trim(),
-    AGENT_WORK_DIR:  document.getElementById('cfg-dir').value.trim(),
-    DATABASE_URL:    document.getElementById('cfg-db').value.trim(),
-    THEME:           document.getElementById('cfg-theme').value,
+    API_KEY:             document.getElementById('cfg-key').value.trim(),
+    API_BASE:            document.getElementById('cfg-base').value.trim(),
+    MODEL:               document.getElementById('cfg-model').value.trim(),
+    MODEL_PLANNER:       document.getElementById('cfg-model-planner')?.value.trim() || '',
+    MODEL_SUMMARIZER:    document.getElementById('cfg-model-summarizer')?.value.trim() || '',
+    MODEL_RERANKER:      document.getElementById('cfg-model-reranker')?.value.trim() || '',
+    API_KEY_PLANNER:     document.getElementById('cfg-key-planner')?.value.trim() || '',
+    API_BASE_PLANNER:    document.getElementById('cfg-base-planner')?.value.trim() || '',
+    API_KEY_SUMMARIZER:  document.getElementById('cfg-key-summarizer')?.value.trim() || '',
+    API_BASE_SUMMARIZER: document.getElementById('cfg-base-summarizer')?.value.trim() || '',
+    API_KEY_RERANKER:    document.getElementById('cfg-key-reranker')?.value.trim() || '',
+    API_BASE_RERANKER:   document.getElementById('cfg-base-reranker')?.value.trim() || '',
+    AGENT_WORK_DIR:      document.getElementById('cfg-dir').value.trim(),
+    DATABASE_URL:        document.getElementById('cfg-db').value.trim(),
+    THEME:               document.getElementById('cfg-theme').value,
   };
   socket.send(jsonStringifyEvent("save_config", payload));
   applyTheme(payload.THEME);
   if (payload.THEME) {
     localStorage.setItem('forge_theme', payload.THEME);
+  }
+  const statusEl = document.getElementById('settings-status');
+  if (statusEl) {
+    statusEl.textContent = 'Configuration saved and applied.';
+    setTimeout(() => { statusEl.textContent = ''; }, 2500);
   }
   settingsPanel.classList.add('hidden');
   // Request fresh config echo so UI fields stay in sync with what was persisted
