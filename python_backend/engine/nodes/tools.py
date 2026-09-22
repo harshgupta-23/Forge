@@ -10,6 +10,11 @@ from langchain_core.messages import AIMessage, ToolMessage
 from engine.state import AgentState
 from tools import ALL_TOOLS
 
+try:
+    from tools.security import set_active_attached_files, mask_secrets
+except ImportError:
+    from security import set_active_attached_files, mask_secrets
+
 
 def _fmt_args(args: dict[str, Any]) -> str:
     """Formats argument dict into a readable single-line summary."""
@@ -39,13 +44,18 @@ def _safe_parse_args(raw_args: Any) -> dict[str, Any]:
 async def tools_node(state: AgentState, config: RunnableConfig = None) -> dict[str, Any]:
     """
     Executes tool calls requested by the agent node:
+    - Sets active session attached files for path jail validation
     - Emits tool_start and tool_done events to the UI via queue
     - Executes tools in thread pool to prevent blocking asyncio loop
+    - Applies secret masking DLP and XML untrusted content delimiters
     - Returns list of ToolMessage objects
     """
     cfg = (config or {}).get("configurable", {})
     queue: asyncio.Queue = cfg.get("queue")
     stop_event = cfg.get("stop_event")
+
+    # Sync session-attached files to security context
+    set_active_attached_files(state.get("attached_files", {}))
 
     messages = state.get("messages", [])
     if not messages:
@@ -90,17 +100,22 @@ async def tools_node(state: AgentState, config: RunnableConfig = None) -> dict[s
             except Exception as exc:
                 result_str = f"[Execution Error]: {exc}"
 
+        # 1. Mask outbound credentials / private keys
+        sanitized_result = mask_secrets(str(result_str))
+
+        # 2. Wrap output in untrusted content tags to mitigate indirect prompt injection
+        delimited_content = f'<tool_output name="{tool_name}" safe_data_only="true">\n{sanitized_result}\n</tool_output>'
+
         from engine.utils import estimate_tokens
-        toks = estimate_tokens(str(result_str))
-        summary = next((ln.strip() for ln in str(result_str).splitlines() if ln.strip()), "")[:80]
+        toks = estimate_tokens(delimited_content)
+        summary = next((ln.strip() for ln in sanitized_result.splitlines() if ln.strip()), "")[:80]
         if queue:
             await queue.put(("tool_done", (f"  ✓  {tool_name} → {summary}", toks)))
 
         tool_messages.append(ToolMessage(
-            content=str(result_str),
+            content=delimited_content,
             name=tool_name,
             tool_call_id=call_id
         ))
 
     return {"messages": tool_messages}
-

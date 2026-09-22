@@ -1,12 +1,21 @@
 from pathlib import Path
 from langchain_core.tools import tool
 
+try:
+    from tools.security import is_path_safe
+except ImportError:
+    from security import is_path_safe
+
 @tool
 def list_directory(directory_path: str) -> str:
     """
     List files and sub-directories inside directory_path.
     Returns names, types (file/dir), and sizes.
     """
+    safe, reason = is_path_safe(directory_path)
+    if not safe:
+        return f"CRITICAL SECURITY ERROR: Access Denied. {reason}"
+
     path = Path(directory_path.strip().strip('"').strip("'"))
     if not path.exists():
         return f"ERROR: Directory not found — {path}"

@@ -3,6 +3,11 @@ import traceback
 from pathlib import Path
 from langchain_core.tools import tool
 
+try:
+    from tools.security import is_path_safe
+except ImportError:
+    from security import is_path_safe
+
 @tool
 def copy_file(source_path: str, destination_path: str) -> str:
     """
@@ -10,6 +15,14 @@ def copy_file(source_path: str, destination_path: str) -> str:
     Useful for transferring outputs, making backups before editing, etc.
     Creates destination parent directories if needed.
     """
+    safe_src, reason_src = is_path_safe(source_path)
+    if not safe_src:
+        return f"CRITICAL SECURITY ERROR: Source Access Denied. {reason_src}"
+
+    safe_dst, reason_dst = is_path_safe(destination_path, allow_outside_workspace_attached=False)
+    if not safe_dst:
+        return f"CRITICAL SECURITY ERROR: Destination Access Denied. {reason_dst}"
+
     src = Path(source_path.strip().strip('"').strip("'"))
     dst = Path(destination_path.strip().strip('"').strip("'"))
     if not src.exists():

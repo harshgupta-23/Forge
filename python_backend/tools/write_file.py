@@ -2,22 +2,10 @@ import traceback
 from pathlib import Path
 from langchain_core.tools import tool
 
-def is_path_protected(file_path: str) -> bool:
-    """Returns True if the path targets config.json, a dot-env file, or the backend folder."""
-    try:
-        target_path = Path(file_path.strip().strip('"').strip("'")).resolve()
-        # Path of the tools directory -> backend directory
-        backend_dir = Path(__file__).parent.parent.resolve()
-        root_dir = backend_dir.parent.resolve()
-        config_file = root_dir / "config.json"
-
-        if target_path.name.lower() in ("config.json", ".env") or target_path == config_file:
-            return True
-        if backend_dir in target_path.parents or target_path == backend_dir:
-            return True
-        return False
-    except Exception:
-        return True
+try:
+    from tools.security import is_path_safe
+except ImportError:
+    from security import is_path_safe
 
 @tool
 def write_file(file_path: str, content: str) -> str:
@@ -26,8 +14,9 @@ def write_file(file_path: str, content: str) -> str:
     Creates parent directories if they don't exist.
     Use this to save corrected code, updated documents, or any output file.
     """
-    if is_path_protected(file_path):
-        return "CRITICAL SECURITY ERROR: Access Denied. Writing to application source files or configurations is strictly prohibited."
+    safe, reason = is_path_safe(file_path, allow_outside_workspace_attached=False)
+    if not safe:
+        return f"CRITICAL SECURITY ERROR: Access Denied. {reason}"
 
     path = Path(file_path.strip().strip('"').strip("'"))
     try:

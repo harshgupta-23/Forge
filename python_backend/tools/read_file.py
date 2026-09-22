@@ -2,21 +2,12 @@ import traceback
 from pathlib import Path
 from langchain_core.tools import tool
 
-def is_path_protected(file_path: str) -> bool:
-    """Returns True if the path targets config.json, a dot-env file, or the backend folder."""
-    try:
-        target_path = Path(file_path.strip().strip('"').strip("'")).resolve()
-        backend_dir = Path(__file__).parent.parent.resolve()
-        root_dir = backend_dir.parent.resolve()
-        config_file = root_dir / "config.json"
+try:
+    from tools.security import is_path_safe
+except ImportError:
+    from security import is_path_safe
 
-        if target_path.name.lower() in ("config.json", ".env") or target_path == config_file:
-            return True
-        if backend_dir in target_path.parents or target_path == backend_dir:
-            return True
-        return False
-    except Exception:
-        return True
+MAX_FILE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 @tool
 def read_file(file_path: str) -> str:
@@ -24,8 +15,9 @@ def read_file(file_path: str) -> str:
     Read and return the text content of any file (source code, docs, txt, csv…).
     For binary files it returns a hex dump of the first 2 KB.
     """
-    if is_path_protected(file_path):
-        return "CRITICAL SECURITY ERROR: Access Denied. Reading application source files or configurations is strictly prohibited."
+    safe, reason = is_path_safe(file_path)
+    if not safe:
+        return f"CRITICAL SECURITY ERROR: Access Denied. {reason}"
 
     path = Path(file_path.strip().strip('"').strip("'"))
     
@@ -35,6 +27,10 @@ def read_file(file_path: str) -> str:
         return f"ERROR: Path is not a file — {path}"
 
     try:
+        size = path.stat().st_size
+        if size > MAX_FILE_BYTES:
+            return f"ERROR: File size ({size:,} bytes) exceeds the 10 MB security limit — {path}"
+
         text = path.read_text(encoding="utf-8", errors="replace")
         if len(text) > 20_000:
             text = text[:20_000] + "\n\n[...TRUNCATED — file too large...]"
