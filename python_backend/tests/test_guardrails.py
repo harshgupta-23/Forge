@@ -6,6 +6,7 @@ cross-platform defense-in-depth security guardrails.
 import os
 import sys
 import tempfile
+import asyncio
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -23,7 +24,7 @@ from tools.security import (
     set_active_attached_files,
 )
 from tools.run_local_python_script import _inspect_code_ast
-from engine.nodes.evaluator import should_continue, is_stuck_in_repetition_loop
+from engine.nodes.evaluator import should_continue, is_stuck_in_repetition_loop, recovery_node
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langgraph.graph import END
 
@@ -193,8 +194,27 @@ def test_evaluator_loop_deduplication():
     assert is_loop is True, "Expected loop to be detected after repeating identical failing call"
     assert "Repetitive loop detected" in reason
 
-    state_a = {"messages": failing_turn_history, "iteration": 2}
-    assert should_continue(state_a) == END
+    # Strike 1: First time repeating failing tool -> Must route to recovery
+    state_a = {"messages": failing_turn_history, "iteration": 2, "warned_signatures": []}
+    assert should_continue(state_a) == "recovery", f"Expected 'recovery' on Strike 1, got {should_continue(state_a)}"
+
+    # Verify recovery_node generates valid ToolMessages for pending tool calls
+    rec_out = asyncio.run(recovery_node(state_a))
+    assert "messages" in rec_out
+    assert len(rec_out["messages"]) == 1
+    assert isinstance(rec_out["messages"][0], ToolMessage)
+    assert rec_out["messages"][0].tool_call_id == "call_2"
+    assert "Repeated Tool Failure" in rec_out["messages"][0].content
+    assert "warned_signatures" in rec_out
+    assert len(rec_out["warned_signatures"]) == 1
+
+    # Strike 2: Second time repeating same failing tool after warning -> Must halt with END
+    state_a_strike2 = {
+        "messages": failing_turn_history,
+        "iteration": 3,
+        "warned_signatures": rec_out["warned_signatures"]
+    }
+    assert should_continue(state_a_strike2) == END, f"Expected END on Strike 2, got {should_continue(state_a_strike2)}"
 
     # Scenario B: Repetition after success (e.g. paginated read or status check) -> Must NOT trip loop
     successful_turn_history = [

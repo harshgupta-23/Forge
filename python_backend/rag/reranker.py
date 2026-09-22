@@ -37,7 +37,7 @@ class Reranker:
 
         try:
             from engine.utils import get_openai_client
-            client, model = get_openai_client()
+            client, model = get_openai_client(role="reranker")
 
             # Build compact prompt
             prompt_lines = [

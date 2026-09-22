@@ -8,7 +8,7 @@ import re
 from urllib.parse import urlparse, urlunparse
 from typing import Any
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, BaseMessage
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
 
 _THOUGHT_RE = re.compile(
     r'<thought>.*?</thought>|<thinking>.*?</thinking>',
@@ -60,15 +60,25 @@ if _WORK_DIR:
     SYSTEM_PROMPT += f"\n\nDEFAULT OUTPUT DIRECTORY: {_WORK_DIR}\nSave all output files here unless told otherwise."
 
 
-def get_openai_client() -> tuple[OpenAI, str]:
+def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
     """
     Constructs OpenAI client configuring Google AI Studio query param keys,
     OpenRouter metadata, or standard OpenAI-compatible endpoints.
+    Resolves model based on role ('agent', 'planner', 'summarizer').
     Returns (client, model_name).
     """
     base_url = os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/").strip()
     api_key = os.environ.get("API_KEY", "").strip()
-    model = os.environ.get("MODEL", "gemma-4-26b-a4b-it").strip()
+
+    if role == "planner":
+        model = os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    elif role == "summarizer":
+        model = os.environ.get("MODEL_SUMMARIZER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    elif role == "reranker":
+        model = os.environ.get("MODEL_RERANKER") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    else:
+        model = os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    model = model.strip()
 
     if not api_key:
         raise RuntimeError(
@@ -105,6 +115,75 @@ def get_openai_client() -> tuple[OpenAI, str]:
         api_key=sdk_key,
         default_headers=extra_headers,
     )
+    return client, model
+
+
+_ASYNC_CLIENT_CACHE: dict[tuple[str, str, str], AsyncOpenAI] = {}
+
+
+def get_async_openai_client(role: str = "agent") -> tuple[AsyncOpenAI, str]:
+    """
+    Constructs or retrieves a cached AsyncOpenAI client, resolving models by role:
+    - "agent": Primary reasoning model (MODEL, default: gemma-4-26b-a4b-it)
+    - "planner": Lightweight planner model (MODEL_PLANNER, fallback: MODEL)
+    - "summarizer": High-throughput summarizer model (MODEL_SUMMARIZER, fallback: MODEL)
+    - "reranker": Fast cross-encoder reranker model (MODEL_RERANKER, fallback: MODEL_PLANNER or MODEL)
+    Returns (async_client, model_name).
+    """
+    base_url = os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/").strip()
+    api_key = os.environ.get("API_KEY", "").strip()
+
+    if not api_key:
+        raise RuntimeError(
+            "CRITICAL: API_KEY is missing or blank. Please open Settings in the UI to add your API key."
+        )
+
+    # Role-based model decoupling
+    if role == "planner":
+        model = os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    elif role == "summarizer":
+        model = os.environ.get("MODEL_SUMMARIZER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    elif role == "reranker":
+        model = os.environ.get("MODEL_RERANKER") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    else:
+        model = os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    model = model.strip()
+
+    parsed_url = urlparse(base_url)
+    is_google = "generativelanguage.googleapis.com" in (parsed_url.netloc or parsed_url.path)
+
+    if is_google:
+        clean_path = parsed_url.path.rstrip("/")
+        new_query = f"key={api_key}"
+        base_url = urlunparse((
+            parsed_url.scheme,
+            parsed_url.netloc,
+            clean_path,
+            parsed_url.params,
+            new_query,
+            parsed_url.fragment
+        ))
+        sdk_key = "ignored-by-google-via-query-param"
+        extra_headers = {}
+    else:
+        sdk_key = api_key
+        extra_headers = {}
+        if "openrouter.ai" in parsed_url.netloc:
+            extra_headers = {
+                "HTTP-Referer": "http://localhost:8765",
+                "X-Title": "Forge Agent",
+            }
+
+    cache_key = (base_url, sdk_key, role)
+    if cache_key in _ASYNC_CLIENT_CACHE:
+        return _ASYNC_CLIENT_CACHE[cache_key], model
+
+    client = AsyncOpenAI(
+        base_url=base_url,
+        api_key=sdk_key,
+        default_headers=extra_headers,
+    )
+    _ASYNC_CLIENT_CACHE[cache_key] = client
     return client, model
 
 

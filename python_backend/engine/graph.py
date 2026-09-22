@@ -11,13 +11,13 @@ from engine.state import AgentState
 from engine.nodes.planner import planner_node
 from engine.nodes.agent import agent_node
 from engine.nodes.tools import tools_node
-from engine.nodes.evaluator import should_continue
+from engine.nodes.evaluator import should_continue, recovery_node
 
 
 def build_graph(checkpointer: Optional[Any] = None):
     """
     Constructs and compiles the multi-node StateGraph:
-    planner -> agent -> should_continue -> (tools -> agent | END)
+    planner -> agent -> should_continue -> (tools -> agent | recovery -> agent | END)
     Attaches checkpointer for stateful time-travel checkpoints if provided.
     """
     workflow = StateGraph(AgentState)
@@ -25,6 +25,7 @@ def build_graph(checkpointer: Optional[Any] = None):
     workflow.add_node("planner", planner_node)
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", tools_node)
+    workflow.add_node("recovery", recovery_node)
 
     workflow.set_entry_point("planner")
     workflow.add_edge("planner", "agent")
@@ -34,10 +35,12 @@ def build_graph(checkpointer: Optional[Any] = None):
         should_continue,
         {
             "tools": "tools",
+            "recovery": "recovery",
             END: END
         }
     )
     workflow.add_edge("tools", "agent")
+    workflow.add_edge("recovery", "agent")
 
     return workflow.compile(checkpointer=checkpointer)
 

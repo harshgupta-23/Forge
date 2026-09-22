@@ -69,7 +69,7 @@ class HierarchicalSubtreeSummarizer:
         summary_text = ""
 
         try:
-            client, model = get_openai_client()
+            client, model = get_openai_client(role="summarizer")
             contents = build_model_contents([HumanMessage(content=prompt)], attached_files)
             resp = client.chat.completions.create(
                 model=model,

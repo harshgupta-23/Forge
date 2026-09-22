@@ -14,4 +14,6 @@ class AgentState(TypedDict):
     plan: Optional[list[str]]
     iteration: int
     is_streaming: bool
+    warned_signatures: Optional[list[str]]
+    recovery_count: Optional[int]
 
