@@ -110,19 +110,28 @@ Decomposes complex requests into discrete, observable steps:
 
 ---
 
-## 🛠️ Built-in Tool Suite & Security Guardrails
+## 🛠️ Built-in Tool Suite & Defense-in-Depth Security Guardrails
 
 | Tool | Capabilities |
 |---|---|
 | `semantic_search` | Hybrid vector + BM25 keyword search over ingested documents with RRF and session isolation |
 | `browser_action` | Playwright Chromium automation (page navigation, form fill, content extraction, screenshots) |
-| `run_local_python_script` | Sandboxed Python subprocess execution with dangerous syntax inspection (`rm -rf`, `DROP TABLE`) |
-| `read_file` / `write_file` | Filesystem operations protected by path boundary enforcement |
+| `run_local_python_script` | Subprocess Python execution with AST analysis, environment scrubbing, and Linux `bwrap` isolation |
+| `read_file` / `write_file` | Filesystem operations bounded to `AGENT_WORK_DIR` with 10 MB limit and path jail enforcement |
+| `copy_file` / `list_directory` | Workspace-jailed file copying and directory tree inspection |
 | `web_search` | Live internet search via DuckDuckGo |
 | `pip_install` | Dynamic package installer into an isolated user environment at runtime |
 | `take_screenshot` / `read_clipboard` | Native desktop system utilities |
 
-> 🔒 **Security Firewall**: Built-in `is_path_protected` prevents reading, writing, or executing against `.env`, `config.json`, or the backend codebase, preventing prompt injection and exfiltration attacks.
+### 🔒 Enterprise Defense-in-Depth Guardrails (`security.py`)
+- **Cross-Platform Workspace Jail (`is_path_safe`)**: Confines all file operations strictly to `AGENT_WORK_DIR` with Windows UNC (`\\?\...`) and case-insensitive normalization across Linux and Windows.
+- **Unconditional System Blocklist**: System folders (`~/.ssh`, `~/.aws`, `~/.bashrc`, `/etc`, `C:\Windows`, `C:\Program Files`, registry hives) and project secrets (`.env`, `config.json`, backend source) are unconditionally blocked.
+- **Dynamic Attached-File Authorization**: Session-scoped authorization dynamically allows reading external files dragged/attached by the user without breaching system directory blocklists.
+- **Subprocess Credential Scrubbing (`SAFE_ENV_WHITELIST`)**: Subprocesses run with a stripped environment, preventing child, grandchild, and descendant processes from inheriting sensitive credentials (`OPENAI_API_KEY`, `DATABASE_URL`, `AWS_*`).
+- **Linux Bubblewrap (`bwrap`) Filesystem Isolation**: Mounts an isolated filesystem (`--ro-bind / /`, `--tmpfs ~/.ssh`, `--tmpfs ~/.aws`) for Python scripts while preserving network egress for legitimate external requests.
+- **AST Static Code Analysis**: Pre-execution AST inspection blocks dangerous modules (`pty`, `winreg`, `ctypes`) and dynamic execution primitives (`eval`, `exec`).
+- **DLP Secret Masking & XML Delimiters**: Automatic outbound token redaction (OpenAI, Anthropic, GitHub, AWS, private keys, database URLs) and structured `<tool_output name="..." safe_data_only="true">` delimiters to mitigate indirect prompt injection.
+- **Repetition Loop Deduplication**: Detects stuck ping-pong loops by comparing canonical tool invocations following errors, backed by a 15-iteration hard ceiling.
 
 ### Instant Tool Extensibility
 Drop any Python file decorated with `@tool` into `python_backend/tools/` or `~/.forge/tools/`:
@@ -173,7 +182,7 @@ bash linux/start.sh --docker
 
 ### 3. Run Automated Evaluation & Test Suites
 ```bash
-# Runs all 7 test suites (Phases 1–6 regression + Ragas evaluation harness)
+# Runs all 8 test suites (Phases 1–6 regression + Ragas evaluation + Guardrails)
 npm test
 ```
 
