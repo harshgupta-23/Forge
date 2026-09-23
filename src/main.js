@@ -27,8 +27,12 @@ const toggleSettings = document.getElementById('toggle-settings');
 const closeSettings = document.getElementById('close-settings');
 const btnNewSession = document.getElementById('btn-new-session');
 const btnUndo      = document.getElementById('btn-undo');
+const btnBranchPrev = document.getElementById('btn-branch-prev');
 const btnSummarise = document.getElementById('btn-summarise');
 const btnTreeView  = document.getElementById('btn-tree-view');
+
+let latestTreeNodes = {};
+let latestActiveNodeId = "node_root";
 const treeViewPanel = document.getElementById('tree-view-panel');
 const closeTreeView = document.getElementById('close-tree-view');
 const btnDetachTree = document.getElementById('btn-detach-tree');
@@ -294,6 +298,15 @@ function renderChatHistory(pathMessages) {
 }
 
 function renderTreeView(nodes, rootId, activeNodeId) {
+  latestTreeNodes = nodes || {};
+  latestActiveNodeId = activeNodeId || "node_root";
+
+  if (btnBranchPrev) {
+    const canBranch = Boolean(latestActiveNodeId && latestActiveNodeId !== "node_root" && latestTreeNodes[latestActiveNodeId]?.parent_id);
+    btnBranchPrev.disabled = !canBranch;
+    btnBranchPrev.style.opacity = canBranch ? '1' : '0.45';
+  }
+
   treeContainer.innerHTML = "";
   
   const layout = document.createElement('div');
@@ -441,6 +454,24 @@ function renderTreeView(nodes, rootId, activeNodeId) {
       }
     });
     actions.appendChild(renameBtn);
+
+    if (node.type !== "root") {
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'node-btn node-btn-delete';
+      undoBtn.innerHTML = `${ICONS.TRASH} Undo`;
+      undoBtn.title = 'Remove this turn and its side branch from history';
+      undoBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('Remove this node and its entire side branch from history?')) {
+          socket.send(JSON.stringify({
+            type: "undo",
+            data: { node_id: nodeId }
+          }));
+        }
+      });
+      actions.appendChild(undoBtn);
+    }
+
     card.appendChild(actions);
     
     card.addEventListener('click', () => {
@@ -708,6 +739,15 @@ socket.onmessage = (event) => {
     const baseRerankerEl = document.getElementById('cfg-base-reranker');
     if (baseRerankerEl) baseRerankerEl.value = msg.data.API_BASE_RERANKER || '';
 
+    const modelTopicGateEl = document.getElementById('cfg-model-topic-gate');
+    if (modelTopicGateEl) modelTopicGateEl.value = msg.data.MODEL_TOPIC_GATE || '';
+
+    const keyTopicGateEl = document.getElementById('cfg-key-topic-gate');
+    if (keyTopicGateEl) keyTopicGateEl.value = msg.data.API_KEY_TOPIC_GATE || '';
+
+    const baseTopicGateEl = document.getElementById('cfg-base-topic-gate');
+    if (baseTopicGateEl) baseTopicGateEl.value = msg.data.API_BASE_TOPIC_GATE || '';
+
     document.getElementById('cfg-dir').value   = msg.data.AGENT_WORK_DIR  || '';
     document.getElementById('cfg-db').value    = msg.data.DATABASE_URL    || '';
     document.getElementById('cfg-theme').value = msg.data.THEME           || 'dark';
@@ -794,6 +834,11 @@ socket.onmessage = (event) => {
       statusBar.textContent = `Context: ~${Number(msg.content).toLocaleString()} tokens`;
     }
   }
+  else if (msg.type === "branch_prompt") {
+    btnStop.classList.add('hidden');
+    statusBar.textContent = 'Topic shift detected. Please choose how to proceed.';
+    renderBranchPrompt(msg.topic, msg.reason, msg.user_text);
+  }
   else if (msg.type === "error") {
     finaliseAgentBubble();
     appendOutputMessage(`${ICONS.ALERT} ${msg.content}`, 'error-response');
@@ -801,6 +846,54 @@ socket.onmessage = (event) => {
     statusBar.textContent = '';
   }
 };
+
+function renderBranchPrompt(topic, reason, userText) {
+  const card = document.createElement('div');
+  card.className = 'branch-prompt-card';
+  card.innerHTML = `
+    <div class="branch-prompt-header">
+      <span class="branch-prompt-icon">${ICONS.ZAP}</span>
+      <span class="branch-prompt-title">Topic Shift Detected: <strong>${escHtml(topic || 'New Topic')}</strong></span>
+    </div>
+    <div class="branch-prompt-reason">${escHtml(reason || 'The query appears to switch to an unrelated topic from the previous turn.')}</div>
+    <div class="branch-prompt-text">Would you like to branch from the previous turn, or continue in this branch?</div>
+    <div class="branch-prompt-buttons">
+      <button class="branch-btn branch-btn-fork" id="btn-branch-fork">
+        <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        Branch from Previous Turn
+      </button>
+      <button class="branch-btn branch-btn-continue" id="btn-branch-continue">
+        Continue in Current Branch &rarr;
+      </button>
+    </div>
+  `;
+
+  const forkBtn = card.querySelector('#btn-branch-fork');
+  const contBtn = card.querySelector('#btn-branch-continue');
+
+  forkBtn.addEventListener('click', () => {
+    forkBtn.disabled = true;
+    contBtn.disabled = true;
+    card.classList.add('answered');
+    forkBtn.classList.add('selected');
+    statusBar.textContent = 'Branching from previous turn…';
+    btnStop.classList.remove('hidden');
+    socket.send(JSON.stringify({ type: 'branch_decision', decision: 'branch' }));
+  });
+
+  contBtn.addEventListener('click', () => {
+    forkBtn.disabled = true;
+    contBtn.disabled = true;
+    card.classList.add('answered');
+    contBtn.classList.add('selected');
+    statusBar.textContent = 'Continuing in current branch…';
+    btnStop.classList.remove('hidden');
+    socket.send(JSON.stringify({ type: 'branch_decision', decision: 'continue' }));
+  });
+
+  logsDiv.appendChild(card);
+  logsDiv.scrollTop = logsDiv.scrollHeight;
+}
 
 // ── Settings Sidebar & Modal Controllers ─────────────────────────────────────────
 function updateModelPlaceholders() {
@@ -818,11 +911,17 @@ function updateModelPlaceholders() {
     const plannerModel = (plannerEl?.value || '').trim() || primaryModel;
     rerankerEl.placeholder = `Inherit from planner (${plannerModel})`;
   }
+  const topicGateEl = document.getElementById('cfg-model-topic-gate');
+  if (topicGateEl) {
+    const plannerModel = (plannerEl?.value || '').trim() || primaryModel;
+    topicGateEl.placeholder = `Inherit from planner (${plannerModel})`;
+  }
 }
 
 // Live update placeholders when typing in model fields
 document.getElementById('cfg-model')?.addEventListener('input', updateModelPlaceholders);
 document.getElementById('cfg-model-planner')?.addEventListener('input', updateModelPlaceholders);
+document.getElementById('cfg-model-topic-gate')?.addEventListener('input', updateModelPlaceholders);
 
 // Tab switching inside settings dialog
 document.querySelectorAll('.settings-tab-btn').forEach(btn => {
@@ -844,7 +943,8 @@ const PROVIDER_PRESETS = {
     model: 'gemma-4-26b-a4b-it',
     planner: 'gemini-1.5-flash',
     summarizer: 'gemini-1.5-flash',
-    reranker: 'gemini-1.5-flash'
+    reranker: 'gemini-1.5-flash',
+    topic_gate: 'gemini-1.5-flash'
   },
   claude: {
     name: 'Anthropic Claude',
@@ -852,7 +952,8 @@ const PROVIDER_PRESETS = {
     model: 'anthropic/claude-3.5-sonnet',
     planner: 'anthropic/claude-3.5-haiku',
     summarizer: 'anthropic/claude-3.5-haiku',
-    reranker: 'anthropic/claude-3.5-haiku'
+    reranker: 'anthropic/claude-3.5-haiku',
+    topic_gate: 'anthropic/claude-3.5-haiku'
   },
   openai: {
     name: 'OpenAI GPT-4o',
@@ -860,7 +961,8 @@ const PROVIDER_PRESETS = {
     model: 'gpt-4o',
     planner: 'gpt-4o-mini',
     summarizer: 'gpt-4o-mini',
-    reranker: 'gpt-4o-mini'
+    reranker: 'gpt-4o-mini',
+    topic_gate: 'gpt-4o-mini'
   },
   ollama: {
     name: 'Local Ollama',
@@ -868,7 +970,8 @@ const PROVIDER_PRESETS = {
     model: 'llama3.1:8b',
     planner: 'qwen2.5:3b',
     summarizer: 'qwen2.5:3b',
-    reranker: 'qwen2.5:3b'
+    reranker: 'qwen2.5:3b',
+    topic_gate: 'qwen2.5:3b'
   }
 };
 
@@ -883,12 +986,14 @@ document.querySelectorAll('.preset-chip').forEach(chip => {
     const plannerEl = document.getElementById('cfg-model-planner');
     const summarizerEl = document.getElementById('cfg-model-summarizer');
     const rerankerEl = document.getElementById('cfg-model-reranker');
+    const topicGateEl = document.getElementById('cfg-model-topic-gate');
 
     if (baseEl) baseEl.value = preset.base;
     if (modelEl) modelEl.value = preset.model;
     if (plannerEl) plannerEl.value = preset.planner;
     if (summarizerEl) summarizerEl.value = preset.summarizer;
     if (rerankerEl) rerankerEl.value = preset.reranker;
+    if (topicGateEl) topicGateEl.value = preset.topic_gate || preset.planner;
 
     updateModelPlaceholders();
 
@@ -949,12 +1054,15 @@ document.getElementById('save-settings').addEventListener('click', () => {
     MODEL_PLANNER:       document.getElementById('cfg-model-planner')?.value.trim() || '',
     MODEL_SUMMARIZER:    document.getElementById('cfg-model-summarizer')?.value.trim() || '',
     MODEL_RERANKER:      document.getElementById('cfg-model-reranker')?.value.trim() || '',
+    MODEL_TOPIC_GATE:    document.getElementById('cfg-model-topic-gate')?.value.trim() || '',
     API_KEY_PLANNER:     document.getElementById('cfg-key-planner')?.value.trim() || '',
     API_BASE_PLANNER:    document.getElementById('cfg-base-planner')?.value.trim() || '',
     API_KEY_SUMMARIZER:  document.getElementById('cfg-key-summarizer')?.value.trim() || '',
     API_BASE_SUMMARIZER: document.getElementById('cfg-base-summarizer')?.value.trim() || '',
     API_KEY_RERANKER:    document.getElementById('cfg-key-reranker')?.value.trim() || '',
     API_BASE_RERANKER:   document.getElementById('cfg-base-reranker')?.value.trim() || '',
+    API_KEY_TOPIC_GATE:  document.getElementById('cfg-key-topic-gate')?.value.trim() || '',
+    API_BASE_TOPIC_GATE: document.getElementById('cfg-base-topic-gate')?.value.trim() || '',
     AGENT_WORK_DIR:      document.getElementById('cfg-dir').value.trim(),
     DATABASE_URL:        document.getElementById('cfg-db').value.trim(),
     THEME:               document.getElementById('cfg-theme').value,
@@ -1195,9 +1303,28 @@ btnNewSession.addEventListener('click', () => {
 });
 
 btnUndo.addEventListener('click', () => {
-  if (!confirm('Remove last user+agent turn from history?')) return;
+  if (!confirm('Remove active turn and its side branch from history?')) return;
   socket.send(JSON.stringify({ type: 'undo' }));
 });
+
+if (btnBranchPrev) {
+  btnBranchPrev.addEventListener('click', () => {
+    if (!latestActiveNodeId || latestActiveNodeId === 'node_root') {
+      statusBar.textContent = 'Already at session root.';
+      return;
+    }
+    const curr = latestTreeNodes[latestActiveNodeId];
+    if (!curr || !curr.parent_id) {
+      statusBar.textContent = 'No previous turn found.';
+      return;
+    }
+    socket.send(JSON.stringify({
+      type: 'set_active',
+      content: curr.parent_id
+    }));
+    statusBar.textContent = 'Switched to previous turn. New messages will branch from here.';
+  });
+}
 
 btnSummarise.addEventListener('click', () => {
   if (!confirm('Summarise history to save tokens? This sends history to the LLM once.')) return;

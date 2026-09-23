@@ -99,25 +99,58 @@ class Reranker:
 
         return self._fallback_rerank(query, pool, top_k)
 
-    def _fallback_rerank(self, query: str, pool: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
-        """Tier 2 fallback: pure-Python token overlap + exact match boost."""
-        q_tokens = set(re.findall(r'\w+', query.lower()))
-        if not q_tokens:
+    def _fallback_rerank(
+        self, query: str, pool: list[dict[str, Any]], top_k: int
+    ) -> list[dict[str, Any]]:
+        """Tier 2 fallback: length-normalized lexical overlap + exact match boost."""
+        query_lower = query.lower()
+        q_tokens = set(re.findall(r"\w+", query_lower))
+
+        if not q_tokens or not pool:
             return pool[:top_k]
 
+        # Normalize RRF scores across pool into [0.0, 1.0] so it scales predictably
+        max_rrf = max((item.get("rrf_score", 0.0) for item in pool), default=1.0)
+        rrf_norm_factor = max_rrf if max_rrf > 0 else 1.0
+
         scored = []
-        for idx, item in enumerate(pool):
+        total_q_tokens = len(q_tokens)
+
+        for item in pool:
             text = item.get("content", "").lower()
-            t_tokens = set(re.findall(r'\w+', text))
-            overlap = len(q_tokens.intersection(t_tokens))
-            exact_phrase_bonus = 2.0 if query.lower() in text else 0.0
-            
-            # Combine hybrid search base score with lexical overlap
-            base_score = item.get("rrf_score", 0.0)
-            score = (base_score * 10) + overlap + exact_phrase_bonus
+            t_tokens = set(re.findall(r"\w+", text))
+
+            if not t_tokens:
+                query_coverage = 0.0
+                jaccard = 0.0
+            else:
+                intersection_size = len(q_tokens & t_tokens)
+
+                # Query Coverage [0.0 - 1.0]: fraction of query terms satisfied
+                query_coverage = intersection_size / total_q_tokens
+
+                # Jaccard Similarity [0.0 - 1.0]: penalizes bloated documents
+                jaccard = intersection_size / len(q_tokens | t_tokens)
+
+            # Balanced overlap combining coverage and doc-length normalization
+            normalized_overlap = 0.7 * query_coverage + 0.3 * jaccard
+
+            # Binary phrase bonus normalized to [0.0, 1.0]
+            exact_phrase_bonus = 1.0 if query_lower in text else 0.0
+
+            # Base retrieval score normalized to [0.0, 1.0]
+            base_score = item.get("rrf_score", 0.0) / rrf_norm_factor
+
+            # Bounded weighted score: Base RRF: 45%, Overlap: 35%, Exact match: 20%
+            final_score = (
+                (0.45 * base_score)
+                + (0.35 * normalized_overlap)
+                + (0.20 * exact_phrase_bonus)
+            )
+
             item["rerank_method"] = "lexical_fallback"
-            item["rerank_score"] = score
-            scored.append((score, item))
+            item["rerank_score"] = round(final_score, 4)
+            scored.append((final_score, item))
 
         scored.sort(key=lambda x: x[0], reverse=True)
         return [item for _, item in scored][:top_k]

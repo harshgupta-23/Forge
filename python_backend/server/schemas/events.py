@@ -46,6 +46,9 @@ class SetLabelEvent(BaseInboundEvent):
 
 class UndoEvent(BaseInboundEvent):
     type: Literal["undo"]
+    data: Optional[Union[dict[str, Any], str]] = None
+    node_id: Optional[str] = None
+    content: Optional[str] = None
 
 
 class SummariseEvent(BaseInboundEvent):
@@ -86,6 +89,11 @@ class ShutdownEvent(BaseInboundEvent):
     type: Literal["shutdown"]
 
 
+class BranchDecisionEvent(BaseInboundEvent):
+    type: Literal["branch_decision"]
+    decision: Literal["branch", "continue"]
+
+
 # Discriminated union for incoming WebSocket frames
 InboundEvent = Annotated[
     Union[
@@ -104,12 +112,21 @@ InboundEvent = Annotated[
         AttachFileEvent,
         GetTokenUsageEvent,
         ShutdownEvent,
+        BranchDecisionEvent,
     ],
     Field(discriminator="type")
 ]
 
 
 # ── Outbound payload models (exact legacy frontend keys) ──────────────────────
+
+class BranchPromptOutbound(BaseModel):
+    model_config = {"extra": "ignore"}
+    type: Literal["branch_prompt"] = "branch_prompt"
+    topic: str = ""
+    reason: str = ""
+    user_text: str = ""
+
 
 class ConfigOutbound(BaseModel):
     type: Literal["config"] = "config"

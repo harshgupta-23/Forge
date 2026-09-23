@@ -1183,6 +1183,11 @@ body.light-theme .active-tip .node-label-badge {
   border-color: var(--text-muted);
   color: var(--text-main);
 }
+.node-btn-delete:hover {
+  border-color: var(--danger, #ef4444);
+  color: #ff6b6b;
+  background: rgba(239, 68, 68, 0.12);
+}
 
 #btn-tree-view:hover {
   background-color: rgba(0, 250, 154, 0.1);
@@ -1486,4 +1491,146 @@ body.light-theme .pruned-savings-pill {
   background: rgba(5, 150, 105, 0.12);
   border-color: rgba(5, 150, 105, 0.25);
   color: #059669;
+}
+
+/* ── Topic Gate Branch Prompt Card & Branch Prev Button ────────── */
+#btn-branch-prev {
+  transition: opacity 0.2s, background-color 0.2s, border-color 0.2s;
+}
+
+#btn-branch-prev:disabled {
+  cursor: not-allowed;
+  opacity: 0.45 !important;
+}
+
+.branch-prompt-card {
+  margin: 12px 0;
+  padding: 14px 18px;
+  background: rgba(30, 30, 42, 0.95);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-left: 4px solid #f59e0b;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  animation: fadeIn 0.25s ease-out;
+}
+
+body.light-theme .branch-prompt-card {
+  background: #fffbeb;
+  border-color: rgba(217, 119, 6, 0.35);
+  border-left-color: #d97706;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+}
+
+.branch-prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.branch-prompt-icon {
+  color: #f59e0b;
+  display: inline-flex;
+  align-items: center;
+}
+
+.branch-prompt-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+body.light-theme .branch-prompt-title {
+  color: #b45309;
+}
+
+.branch-prompt-reason {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  line-height: 1.4;
+}
+
+.branch-prompt-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+  margin-bottom: 12px;
+}
+
+.branch-prompt-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.branch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: 1px solid transparent;
+}
+
+.branch-btn-fork {
+  background: rgba(0, 250, 154, 0.15);
+  border-color: rgba(0, 250, 154, 0.4);
+  color: var(--accent);
+}
+
+.branch-btn-fork:hover:not(:disabled) {
+  background: rgba(0, 250, 154, 0.28);
+  border-color: var(--accent);
+  box-shadow: 0 0 8px rgba(0, 250, 154, 0.3);
+}
+
+body.light-theme .branch-btn-fork {
+  background: rgba(0, 122, 255, 0.1);
+  border-color: rgba(0, 122, 255, 0.3);
+  color: var(--accent);
+}
+
+body.light-theme .branch-btn-fork:hover:not(:disabled) {
+  background: rgba(0, 122, 255, 0.2);
+  border-color: var(--accent);
+}
+
+.branch-btn-continue {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-color);
+  color: var(--text-main);
+}
+
+.branch-btn-continue:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+body.light-theme .branch-btn-continue {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+body.light-theme .branch-btn-continue:hover:not(:disabled) {
+  background: #e2e8f0;
+  border-color: #94a3b8;
+}
+
+.branch-prompt-card.answered {
+  opacity: 0.7;
+}
+
+.branch-btn:disabled {
+  cursor: default;
+}
+
+.branch-btn.selected {
+  font-weight: 700;
+  border-width: 2px;
 }

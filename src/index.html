@@ -27,6 +27,10 @@
       <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
       Undo
     </button>
+    <button id="btn-branch-prev" title="Navigate to previous turn to create a new branch from there">
+      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+      Branch from Prev
+    </button>
     <button id="btn-summarise">
       <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
       Summarise
@@ -231,6 +235,17 @@
                 <div style="display: flex; gap: 8px; margin-top: 6px;">
                   <input type="password" id="cfg-key-reranker" placeholder="Optional API_KEY_RERANKER" style="flex: 1;">
                   <input type="text" id="cfg-base-reranker" placeholder="Optional API_BASE_RERANKER" style="flex: 1;">
+                </div>
+              </div>
+
+              <!-- Topic Gate Role -->
+              <div class="role-override-card" style="margin-top: 10px; padding: 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 6px;">
+                <strong style="font-size: 12.5px; color: var(--text-main);">Topic Gate Role <span class="badge-role">MODEL_TOPIC_GATE</span></strong>
+                <span class="field-desc">Topic shift analysis & smart branch gating in <code>topic_gate.py</code>.</span>
+                <input type="text" id="cfg-model-topic-gate" placeholder="Inherit from planner / primary" style="margin-top: 6px;">
+                <div style="display: flex; gap: 8px; margin-top: 6px;">
+                  <input type="password" id="cfg-key-topic-gate" placeholder="Optional API_KEY_TOPIC_GATE" style="flex: 1;">
+                  <input type="text" id="cfg-base-topic-gate" placeholder="Optional API_BASE_TOPIC_GATE" style="flex: 1;">
                 </div>
               </div>
             </details>

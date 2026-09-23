@@ -52,7 +52,9 @@ const testFiles = [
   path.join(pythonBackendDir, 'tests', 'evals', 'test_ragas.py'),
   path.join(pythonBackendDir, 'tests', 'test_phase5.py'),
   path.join(pythonBackendDir, 'tests', 'test_phase6.py'),
-  path.join(pythonBackendDir, 'tests', 'test_guardrails.py')
+  path.join(pythonBackendDir, 'tests', 'test_guardrails.py'),
+  path.join(pythonBackendDir, 'tests', 'test_undo.py'),
+  path.join(pythonBackendDir, 'tests', 'test_topic_gate.py')
 ];
 
 console.log(`[test-runner] Using Python: ${pythonBin}`);

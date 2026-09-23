@@ -5,7 +5,8 @@ const ICONS = {
   ZAP:  `<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>`,
   GEAR: `<svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   USER: `<svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-  BOT:  `<svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`
+  BOT:  `<svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>`,
+  TRASH: `<svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`
 };
 
 function escHtml(str) {
@@ -26,6 +27,7 @@ const zoomValueEl = document.getElementById('zoom-value');
 const btnZoomIn = document.getElementById('btn-zoom-in');
 const btnZoomOut = document.getElementById('btn-zoom-out');
 const btnZoomReset = document.getElementById('btn-zoom-reset');
+const btnTreeBranchPrev = document.getElementById('btn-tree-branch-prev');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let socket = null;
@@ -107,6 +109,19 @@ function resetView() {
 btnZoomIn.addEventListener('click', () => zoom(0.15));
 btnZoomOut.addEventListener('click', () => zoom(-0.15));
 btnZoomReset.addEventListener('click', resetView);
+
+if (btnTreeBranchPrev) {
+  btnTreeBranchPrev.addEventListener('click', () => {
+    if (!currentActiveNodeId || currentActiveNodeId === 'node_root') return;
+    const curr = currentNodes?.[currentActiveNodeId];
+    if (curr?.parent_id) {
+      socket.send(JSON.stringify({
+        type: 'set_active',
+        content: curr.parent_id
+      }));
+    }
+  });
+}
 
 treeContainer.addEventListener('wheel', (e) => {
   e.preventDefault();
@@ -197,6 +212,12 @@ function renderTreeView(nodes, rootId, activeNodeId) {
   currentNodes = nodes;
   currentRootId = rootId;
   currentActiveNodeId = activeNodeId;
+
+  if (btnTreeBranchPrev) {
+    const canBranch = Boolean(activeNodeId && activeNodeId !== 'node_root' && nodes?.[activeNodeId]?.parent_id);
+    btnTreeBranchPrev.disabled = !canBranch;
+    btnTreeBranchPrev.style.opacity = canBranch ? '1' : '0.45';
+  }
 
   // Preserve hint element
   const hintEl = treeContainer.querySelector('.canvas-hint');
@@ -348,6 +369,26 @@ function renderTreeView(nodes, rootId, activeNodeId) {
       }
     });
     actions.appendChild(renameBtn);
+
+    if (node.type !== "root") {
+      const undoBtn = document.createElement('button');
+      undoBtn.className = 'node-btn node-btn-delete';
+      undoBtn.innerHTML = `${ICONS.TRASH} Undo`;
+      undoBtn.title = 'Remove this turn and its side branch from history';
+      undoBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('Remove this node and its entire side branch from history?')) {
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+              type: "undo",
+              data: { node_id: nodeId }
+            }));
+          }
+        }
+      });
+      actions.appendChild(undoBtn);
+    }
+
     card.appendChild(actions);
 
     card.addEventListener('click', () => {

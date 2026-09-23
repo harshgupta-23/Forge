@@ -124,13 +124,16 @@ def apply_config_to_env(cfg: dict[str, Any]) -> None:
         "MODEL_PLANNER",
         "MODEL_SUMMARIZER",
         "MODEL_RERANKER",
+        "MODEL_TOPIC_GATE",
         "API_BASE",
         "API_BASE_PLANNER",
         "API_BASE_SUMMARIZER",
         "API_BASE_RERANKER",
+        "API_BASE_TOPIC_GATE",
         "API_KEY_PLANNER",
         "API_KEY_SUMMARIZER",
         "API_KEY_RERANKER",
+        "API_KEY_TOPIC_GATE",
         "AGENT_WORK_DIR",
         "DATABASE_URL"
     )

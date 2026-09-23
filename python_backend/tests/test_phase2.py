@@ -239,6 +239,78 @@ async def test_dynamic_compiled_graph_with_checkpointer():
     print("✓ test_dynamic_compiled_graph_with_checkpointer passed")
 
 
+async def test_undo_and_branch_deletion():
+    """Verify undo removes active turn node and its entire side branch while preserving sibling branches."""
+    import tempfile
+    import pathlib
+    import storage.checkpointer as cp
+    from storage.session_manager import SessionManager
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    from langgraph.graph import StateGraph, START, END
+    from typing import TypedDict, Annotated
+    import operator
+
+    class State(TypedDict):
+        messages: Annotated[list, operator.add]
+
+    def dummy_node(state):
+        return {"messages": ["assistant_reply"]}
+
+    with tempfile.NamedTemporaryFile(suffix=".db") as tmp:
+        db_path = pathlib.Path(tmp.name)
+    cp.SQLITE_DB_PATH = db_path
+
+    async with AsyncSqliteSaver.from_conn_string(str(db_path)) as saver:
+        await saver.setup()
+        builder = StateGraph(State)
+        builder.add_node("turn", dummy_node)
+        builder.add_edge(START, "turn")
+        builder.add_edge("turn", END)
+        graph = builder.compile(checkpointer=saver)
+
+        sm = SessionManager()
+        tid = "test_undo_branch_tid"
+
+        # 1. Turn 1
+        await graph.ainvoke({"messages": ["turn 1"]}, {"configurable": {"thread_id": tid}})
+        snaps = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
+        t1_cid = snaps[0].config["configurable"]["checkpoint_id"]
+        sm.set_active_checkpoint(tid, t1_cid)
+
+        # 2. Main branch: Turn 1 -> Turn 2
+        await graph.ainvoke({"messages": ["turn 2 main"]}, {"configurable": {"thread_id": tid, "checkpoint_id": t1_cid}})
+        snaps = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
+        t2_cid = snaps[0].config["configurable"]["checkpoint_id"]
+
+        # 3. Side branch from Turn 1: Turn 1 -> Turn 3 -> Turn 4
+        await graph.ainvoke({"messages": ["turn 3 side"]}, {"configurable": {"thread_id": tid, "checkpoint_id": t1_cid}})
+        snaps = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
+        t3_cid = snaps[0].config["configurable"]["checkpoint_id"]
+
+        await graph.ainvoke({"messages": ["turn 4 side"]}, {"configurable": {"thread_id": tid, "checkpoint_id": t3_cid}})
+        snaps = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
+        t4_cid = snaps[0].config["configurable"]["checkpoint_id"]
+
+        # Undo on Turn 3 (root of side branch)
+        sm.set_active_checkpoint(tid, t3_cid)
+        parent_cid, restored = await sm.undo(tid, graph)
+
+        assert parent_cid == t1_cid, f"Expected parent to be {t1_cid}, got {parent_cid}"
+        assert sm.get_active_checkpoint(tid) == t1_cid
+
+        snaps_after = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
+        td_after = checkpoints_to_tree_data(tid, snaps_after, parent_cid)
+
+        # Verify side branch (Turn 3 and Turn 4) is completely removed from tree and checkpointer
+        assert t3_cid not in td_after["nodes"], "Turn 3 should be removed"
+        assert t4_cid not in td_after["nodes"], "Turn 4 (side branch) should be removed"
+        assert t1_cid in td_after["nodes"], "Turn 1 should remain"
+        assert t2_cid in td_after["nodes"], "Turn 2 (main branch) should remain"
+        assert len(td_after["nodes"]) == 3  # node_root, t1, t2
+
+    print("✓ test_undo_and_branch_deletion passed")
+
+
 async def main():
     await test_checkpoint_manager_lifecycle()
     await test_metadata_store()
@@ -247,6 +319,7 @@ async def main():
     test_session_manager()
     await test_database_config_and_reconnect()
     await test_dynamic_compiled_graph_with_checkpointer()
+    await test_undo_and_branch_deletion()
     print("\nAll Phase 2 unit tests passed successfully!")
 
 

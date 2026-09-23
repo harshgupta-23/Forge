@@ -83,6 +83,8 @@ def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
         model = os.environ.get("MODEL_SUMMARIZER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
     elif role == "reranker":
         model = os.environ.get("MODEL_RERANKER") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    elif role == "topic_gate":
+        model = os.environ.get("MODEL_TOPIC_GATE") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
     else:
         model = os.environ.get("MODEL", "gemma-4-26b-a4b-it")
     model = model.strip()
@@ -92,30 +94,17 @@ def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
             f"CRITICAL: API_KEY for role '{role}' is missing or blank. Please open Settings in the UI to add your API key."
         )
 
-    parsed_url = urlparse(base_url)
-    is_google = "generativelanguage.googleapis.com" in (parsed_url.netloc or parsed_url.path)
+    if not base_url.endswith("/"):
+        base_url += "/"
 
-    if is_google:
-        clean_path = parsed_url.path.rstrip("/")
-        new_query = f"key={api_key}"
-        base_url = urlunparse((
-            parsed_url.scheme,
-            parsed_url.netloc,
-            clean_path,
-            parsed_url.params,
-            new_query,
-            parsed_url.fragment
-        ))
-        sdk_key = "ignored-by-google-via-query-param"
-        extra_headers = {}
-    else:
-        sdk_key = api_key
-        extra_headers = {}
-        if "openrouter.ai" in parsed_url.netloc:
-            extra_headers = {
-                "HTTP-Referer": "http://localhost:8765",
-                "X-Title": "Forge Agent",
-            }
+    sdk_key = api_key
+    extra_headers = {}
+    parsed_url = urlparse(base_url)
+    if "openrouter.ai" in (parsed_url.netloc or ""):
+        extra_headers = {
+            "HTTP-Referer": "http://localhost:8765",
+            "X-Title": "Forge Agent",
+        }
 
     client = OpenAI(
         base_url=base_url,
@@ -164,34 +153,23 @@ def get_async_openai_client(role: str = "agent") -> tuple[AsyncOpenAI, str]:
         model = os.environ.get("MODEL_SUMMARIZER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
     elif role == "reranker":
         model = os.environ.get("MODEL_RERANKER") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+    elif role == "topic_gate":
+        model = os.environ.get("MODEL_TOPIC_GATE") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
     else:
         model = os.environ.get("MODEL", "gemma-4-26b-a4b-it")
     model = model.strip()
 
-    parsed_url = urlparse(base_url)
-    is_google = "generativelanguage.googleapis.com" in (parsed_url.netloc or parsed_url.path)
+    if not base_url.endswith("/"):
+        base_url += "/"
 
-    if is_google:
-        clean_path = parsed_url.path.rstrip("/")
-        new_query = f"key={api_key}"
-        base_url = urlunparse((
-            parsed_url.scheme,
-            parsed_url.netloc,
-            clean_path,
-            parsed_url.params,
-            new_query,
-            parsed_url.fragment
-        ))
-        sdk_key = "ignored-by-google-via-query-param"
-        extra_headers = {}
-    else:
-        sdk_key = api_key
-        extra_headers = {}
-        if "openrouter.ai" in parsed_url.netloc:
-            extra_headers = {
-                "HTTP-Referer": "http://localhost:8765",
-                "X-Title": "Forge Agent",
-            }
+    sdk_key = api_key
+    extra_headers = {}
+    parsed_url = urlparse(base_url)
+    if "openrouter.ai" in (parsed_url.netloc or ""):
+        extra_headers = {
+            "HTTP-Referer": "http://localhost:8765",
+            "X-Title": "Forge Agent",
+        }
 
     cache_key = (base_url, sdk_key, role)
     if cache_key in _ASYNC_CLIENT_CACHE:

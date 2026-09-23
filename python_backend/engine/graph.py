@@ -8,26 +8,47 @@ from typing import Any, Optional
 from langchain_core.messages import BaseMessage
 from langgraph.graph import StateGraph, END
 from engine.state import AgentState
+from engine.nodes.topic_gate import topic_gate_node
 from engine.nodes.planner import planner_node
 from engine.nodes.agent import agent_node
 from engine.nodes.tools import tools_node
 from engine.nodes.evaluator import should_continue, recovery_node
 
 
+def route_topic_gate(state: AgentState) -> str:
+    """
+    Evaluates whether the conversation should proceed to planner or halt at END
+    if an unrelated topic shift requires user branch confirmation.
+    """
+    topic_info = state.get("topic_info")
+    if topic_info and topic_info.get("is_related") is False:
+        return END
+    return "planner"
+
+
 def build_graph(checkpointer: Optional[Any] = None):
     """
     Constructs and compiles the multi-node StateGraph:
-    planner -> agent -> should_continue -> (tools -> agent | recovery -> agent | END)
+    topic_gate -> (planner -> agent | END) -> should_continue -> (tools -> agent | recovery -> agent | END)
     Attaches checkpointer for stateful time-travel checkpoints if provided.
     """
     workflow = StateGraph(AgentState)
 
+    workflow.add_node("topic_gate", topic_gate_node)
     workflow.add_node("planner", planner_node)
     workflow.add_node("agent", agent_node)
     workflow.add_node("tools", tools_node)
     workflow.add_node("recovery", recovery_node)
 
-    workflow.set_entry_point("planner")
+    workflow.set_entry_point("topic_gate")
+    workflow.add_conditional_edges(
+        "topic_gate",
+        route_topic_gate,
+        {
+            "planner": "planner",
+            END: END
+        }
+    )
     workflow.add_edge("planner", "agent")
 
     workflow.add_conditional_edges(

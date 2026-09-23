@@ -28,7 +28,9 @@ from server.schemas.events import (
     ChatHistoryOutbound,
     TreeDataOutbound,
     IndexingProgressOutbound,
+    BranchPromptOutbound,
 )
+from engine.nodes.topic_gate import evaluate_topic_shift, extract_text_content
 from server.dependencies import (
     SESSION_DIR,
     load_config,
@@ -179,6 +181,7 @@ class ActiveSession:
         self.attached_files: dict[str, str] = {}
         self.stop_event: threading.Event | None = None
         self.generation_task: asyncio.Task | None = None
+        self.pending_branch_query: dict[str, Any] | None = None
 
 
 async def send_state_and_tree(websocket: WebSocket, session: ActiveSession) -> None:
@@ -242,6 +245,132 @@ async def websocket_endpoint(websocket: WebSocket):
         print(f"[server] Primary client connected (session={session.thread_id}). Total active: {manager.total_count()}")
     else:
         print(f"[server] Secondary client connected (role={role}, session={session.thread_id}). Total active: {manager.total_count()}")
+
+    async def _execute_generation(delta: dict[str, Any], t_id: str, c_id: str | None):
+        queue: asyncio.Queue = asyncio.Queue()
+        turn_pruned_savings = 0
+
+        graph_task = asyncio.create_task(
+            stream_graph_execution(
+                delta_state=delta,
+                queue=queue,
+                thread_id=t_id,
+                checkpoint_id=c_id,
+                stop_event=session.stop_event
+            )
+        )
+
+        try:
+            while True:
+                event_type, payload = await queue.get()
+
+                if event_type == "__end__":
+                    await websocket.send_text(DoneOutbound().model_dump_json())
+                    break
+
+                elif event_type == "token_savings":
+                    if isinstance(payload, tuple) and len(payload) == 3:
+                        _, _, savings = payload
+                        turn_pruned_savings = savings
+
+                elif event_type == "branch_prompt":
+                    analysis = payload if isinstance(payload, dict) else {}
+                    human_text = ""
+                    if delta.get("messages"):
+                        for m in reversed(delta["messages"]):
+                            if isinstance(m, HumanMessage):
+                                human_text = extract_text_content(m.content)
+                                break
+                    session.pending_branch_query = {
+                        "user_text": human_text,
+                        "active_cid": c_id,
+                        "parent_cid": c_id
+                    }
+                    await websocket.send_text(BranchPromptOutbound(
+                        topic=analysis.get("topic", "New Topic"),
+                        reason=analysis.get("reason", "Detected topic shift"),
+                        user_text=human_text
+                    ).model_dump_json())
+
+                elif event_type in ("done", "cancelled"):
+                    if session.pending_branch_query:
+                        # Halted at topic_gate pending user branching decision; do not advance active turn
+                        continue
+
+                    # Update active checkpoint pointer to the newly written turn checkpoint
+                    graph = get_compiled_graph()
+                    snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": t_id}})]
+                    if snapshots:
+                        latest_turn_cid = snapshots[0].config.get("configurable", {}).get("checkpoint_id")
+                        if latest_turn_cid:
+                            session_manager.set_active_checkpoint(t_id, latest_turn_cid)
+
+                        active_msgs = snapshots[0].values.get("messages", [])
+                        tokens = count_tokens(active_msgs)
+
+                        # Compute turn-level breakdown between latest turn and its parent turn
+                        parent_cid = snapshots[0].parent_config.get("configurable", {}).get("checkpoint_id") if snapshots[0].parent_config else None
+                        parent_msgs = []
+                        if parent_cid:
+                            for s in snapshots[1:]:
+                                if s.config.get("configurable", {}).get("checkpoint_id") == parent_cid:
+                                    parent_msgs = s.values.get("messages", [])
+                                    break
+
+                        u_msg, a_msg, t_calls, t_results, _ = _extract_turn_messages(active_msgs, parent_msgs)
+                        u_tok = u_msg.get("tokens", 0) if u_msg else 0
+                        t_call_tok = sum(estimate_tokens(tc.get("name", "")) + estimate_tokens(str(tc.get("args", ""))) for tc in t_calls)
+                        t_res_tok = sum(r.get("tokens", 0) for r in t_results)
+                        t_tok = t_call_tok + t_res_tok
+                        a_tok = a_msg.get("tokens", 0) if a_msg else 0
+                        turn_tok = u_tok + t_tok + a_tok
+
+                        breakdown = TokenBreakdown(
+                            user=u_tok,
+                            tools=t_tok,
+                            agent=a_tok,
+                            turn_total=turn_tok,
+                            context_total=tokens,
+                            pruned_savings=turn_pruned_savings
+                        )
+
+                        await websocket.send_text(TokenCountOutbound(content=tokens, breakdown=breakdown).model_dump_json())
+                        log_token_usage(tokens)
+                        await websocket.send_text(TokenUsageWindowsOutbound(**get_token_usage_windows()).model_dump_json())
+
+                        # Run background dead-end detection on updated graph
+                        await auto_prune_dead_ends(t_id, snapshots)
+
+                    if event_type == "cancelled":
+                        await websocket.send_text(StatusOutbound(content="Generation stopped by user.").model_dump_json())
+
+                    await manager.broadcast_state_and_tree(t_id)
+
+                elif event_type == "error":
+                    await websocket.send_text(ErrorOutbound(content=str(payload)).model_dump_json())
+
+                elif event_type == "token":
+                    await websocket.send_text(TokenOutbound(content=str(payload)).model_dump_json())
+
+                elif event_type == "tool_start":
+                    await websocket.send_text(ToolStartOutbound(content=str(payload)).model_dump_json())
+
+                elif event_type == "tool_done":
+                    if isinstance(payload, tuple) and len(payload) == 2:
+                        t_content, t_tokens = payload
+                        await websocket.send_text(ToolDoneOutbound(content=str(t_content), tokens=t_tokens).model_dump_json())
+                    else:
+                        await websocket.send_text(ToolDoneOutbound(content=str(payload)).model_dump_json())
+
+                elif event_type == "status":
+                    await websocket.send_text(StatusOutbound(content=str(payload)).model_dump_json())
+
+        except Exception as exc:
+            await websocket.send_text(ErrorOutbound(content=str(exc)).model_dump_json())
+            await websocket.send_text(DoneOutbound().model_dump_json())
+        finally:
+            if not graph_task.done():
+                graph_task.cancel()
 
     try:
         while True:
@@ -340,6 +469,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         await migrate_legacy_session_if_needed(target_id, get_compiled_graph())
                         old_tid = session.thread_id
                         session.thread_id = target_id
+                        session.pending_branch_query = None
                         manager.rebind_session(websocket, old_tid, target_id)
 
                         # Propagate session switch to secondary/detached windows
@@ -414,6 +544,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 old_tid = session.thread_id
                 new_tid = f"sess_{datetime.now(timezone.utc).strftime('%Y-%m-%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
                 session.thread_id = new_tid
+                session.pending_branch_query = None
                 manager.rebind_session(websocket, old_tid, new_tid)
                 session_manager.set_active_checkpoint(new_tid, "node_root")
 
@@ -433,11 +564,25 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # ── undo ──────────────────────────────────────────────────────────
             elif ev_type == "undo":
-                parent_cid, _ = await session_manager.undo(session.thread_id, get_compiled_graph())
+                target_node_id = None
+                if hasattr(event, "node_id") and event.node_id:
+                    target_node_id = event.node_id
+                elif isinstance(getattr(event, "data", None), dict) and event.data.get("node_id"):
+                    target_node_id = event.data["node_id"]
+                elif isinstance(getattr(event, "data", None), str) and event.data:
+                    target_node_id = event.data
+                elif hasattr(event, "content") and event.content:
+                    target_node_id = event.content
+
+                parent_cid, _ = await session_manager.undo(
+                    session.thread_id,
+                    get_compiled_graph(),
+                    target_node_id=target_node_id
+                )
                 if parent_cid and parent_cid != "node_root":
-                    await websocket.send_text(StatusOutbound(content="Undone: moved to parent branch.").model_dump_json())
+                    await websocket.send_text(StatusOutbound(content="Undone: turn & side branch removed.").model_dump_json())
                 else:
-                    await websocket.send_text(StatusOutbound(content="Moved to conversation root.").model_dump_json())
+                    await websocket.send_text(StatusOutbound(content="Undone: moved to conversation root.").model_dump_json())
                 await manager.broadcast_state_and_tree(session.thread_id)
 
             # ── stop_generation ───────────────────────────────────────────────
@@ -509,6 +654,38 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(StatusOutbound(content="Updated node label.").model_dump_json())
                     await manager.broadcast_state_and_tree(session.thread_id)
 
+            # ── branch_decision ───────────────────────────────────────────────
+            elif ev_type == "branch_decision":
+                pending = session.pending_branch_query
+                if not pending:
+                    await websocket.send_text(StatusOutbound(content="No pending branch decision.").model_dump_json())
+                    continue
+
+                session.pending_branch_query = None
+                decision = getattr(event, "decision", "continue")
+                pending_user_text = pending["user_text"]
+                target_cid = pending["active_cid"]
+
+                if decision == "branch":
+                    parent_cid = pending.get("parent_cid", "node_root")
+                    session_manager.set_active_checkpoint(session.thread_id, parent_cid)
+                    target_cid = parent_cid
+                    await websocket.send_text(StatusOutbound(content="Branching from previous turn...").model_dump_json())
+                    await manager.broadcast_state_and_tree(session.thread_id)
+
+                delta_state = {
+                    "messages": [HumanMessage(content=pending_user_text)],
+                    "attached_files": session.attached_files,
+                    "plan": None,
+                    "iteration": 0,
+                    "is_streaming": True,
+                    "skip_topic_gate": True
+                }
+                session.stop_event = threading.Event()
+                session.generation_task = asyncio.create_task(
+                    _execute_generation(delta_state, session.thread_id, target_cid)
+                )
+
             # ── user_message ──────────────────────────────────────────────────
             elif ev_type == "user_message":
                 user_text = event.content.strip()
@@ -528,6 +705,50 @@ async def websocket_endpoint(websocket: WebSocket):
                 thread_id = session.thread_id
                 active_cid = session_manager.get_active_checkpoint(thread_id)
 
+                # Check if there is prior conversation to evaluate topic shift
+                graph = get_compiled_graph()
+                snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": thread_id}})]
+                active_msgs = []
+                if snapshots and active_cid and active_cid != "node_root":
+                    for s in snapshots:
+                        if s.config.get("configurable", {}).get("checkpoint_id") == active_cid:
+                            active_msgs = s.values.get("messages", [])
+                            break
+
+                # Robust fallback to latest completed turn if active_cid was unset or pointing to root
+                if not active_msgs and snapshots:
+                    turns = [s for s in snapshots if not s.next]
+                    if turns:
+                        active_msgs = turns[0].values.get("messages", [])
+                        if not active_cid or active_cid == "node_root":
+                            active_cid = turns[0].config.get("configurable", {}).get("checkpoint_id")
+                            session_manager.set_active_checkpoint(thread_id, active_cid)
+
+                # If prior conversation exists (at least one user message and agent response)
+                if active_msgs and len(active_msgs) >= 2:
+                    try:
+                        shift_info = await evaluate_topic_shift(user_text, active_msgs)
+                        print(f"[topic_gate] Shift check for '{user_text[:30]}': is_related={shift_info.get('is_related')}, topic={shift_info.get('topic')}")
+                        if not shift_info.get("is_related", True):
+                            meta_map = await metadata_store.get_metadata_map(thread_id)
+                            tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, meta_map)
+                            parent_turn_id = tree_dict.get("nodes", {}).get(active_cid, {}).get("parent_id", "node_root")
+
+                            session.pending_branch_query = {
+                                "user_text": user_text,
+                                "active_cid": active_cid,
+                                "parent_cid": parent_turn_id
+                            }
+
+                            await websocket.send_text(BranchPromptOutbound(
+                                topic=shift_info.get("topic", "New Topic"),
+                                reason=shift_info.get("reason", "Detected topic shift"),
+                                user_text=user_text
+                            ).model_dump_json())
+                            continue
+                    except Exception as exc:
+                        print(f"[topic_gate] Topic shift evaluation notice: {exc}")
+
                 # Send ONLY the delta (new user message) so LangGraph forks from active_cid
                 delta_state = {
                     "messages": [HumanMessage(content=user_text)],
@@ -538,111 +759,10 @@ async def websocket_endpoint(websocket: WebSocket):
                 }
 
                 session.stop_event = threading.Event()
+                session.generation_task = asyncio.create_task(
+                    _execute_generation(delta_state, thread_id, active_cid)
+                )
 
-                async def _generate_task(delta=delta_state, t_id=thread_id, c_id=active_cid):
-                    queue: asyncio.Queue = asyncio.Queue()
-                    turn_pruned_savings = 0
-
-                    graph_task = asyncio.create_task(
-                        stream_graph_execution(
-                            delta_state=delta,
-                            queue=queue,
-                            thread_id=t_id,
-                            checkpoint_id=c_id,
-                            stop_event=session.stop_event
-                        )
-                    )
-
-                    try:
-                        while True:
-                            event_type, payload = await queue.get()
-
-                            if event_type == "__end__":
-                                await websocket.send_text(DoneOutbound().model_dump_json())
-                                break
-
-                            elif event_type == "token_savings":
-                                if isinstance(payload, tuple) and len(payload) == 3:
-                                    _, _, savings = payload
-                                    turn_pruned_savings = savings
-
-                            elif event_type in ("done", "cancelled"):
-                                # Update active checkpoint pointer to the newly written turn checkpoint
-                                graph = get_compiled_graph()
-                                snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": t_id}})]
-                                if snapshots:
-                                    latest_turn_cid = snapshots[0].config.get("configurable", {}).get("checkpoint_id")
-                                    if latest_turn_cid:
-                                        session_manager.set_active_checkpoint(t_id, latest_turn_cid)
-
-                                    active_msgs = snapshots[0].values.get("messages", [])
-                                    tokens = count_tokens(active_msgs)
-
-                                    # Compute turn-level breakdown between latest turn and its parent turn
-                                    parent_cid = snapshots[0].parent_config.get("configurable", {}).get("checkpoint_id") if snapshots[0].parent_config else None
-                                    parent_msgs = []
-                                    if parent_cid:
-                                        for s in snapshots[1:]:
-                                            if s.config.get("configurable", {}).get("checkpoint_id") == parent_cid:
-                                                parent_msgs = s.values.get("messages", [])
-                                                break
-
-                                    u_msg, a_msg, t_calls, t_results, _ = _extract_turn_messages(active_msgs, parent_msgs)
-                                    u_tok = u_msg.get("tokens", 0) if u_msg else 0
-                                    t_call_tok = sum(estimate_tokens(tc.get("name", "")) + estimate_tokens(str(tc.get("args", ""))) for tc in t_calls)
-                                    t_res_tok = sum(r.get("tokens", 0) for r in t_results)
-                                    t_tok = t_call_tok + t_res_tok
-                                    a_tok = a_msg.get("tokens", 0) if a_msg else 0
-                                    turn_tok = u_tok + t_tok + a_tok
-
-                                    breakdown = TokenBreakdown(
-                                        user=u_tok,
-                                        tools=t_tok,
-                                        agent=a_tok,
-                                        turn_total=turn_tok,
-                                        context_total=tokens,
-                                        pruned_savings=turn_pruned_savings
-                                    )
-
-                                    await websocket.send_text(TokenCountOutbound(content=tokens, breakdown=breakdown).model_dump_json())
-                                    log_token_usage(tokens)
-                                    await websocket.send_text(TokenUsageWindowsOutbound(**get_token_usage_windows()).model_dump_json())
-
-                                    # Run background dead-end detection on updated graph
-                                    await auto_prune_dead_ends(t_id, snapshots)
-
-                                if event_type == "cancelled":
-                                    await websocket.send_text(StatusOutbound(content="Generation stopped by user.").model_dump_json())
-
-                                await manager.broadcast_state_and_tree(t_id)
-
-                            elif event_type == "error":
-                                await websocket.send_text(ErrorOutbound(content=str(payload)).model_dump_json())
-
-                            elif event_type == "token":
-                                await websocket.send_text(TokenOutbound(content=str(payload)).model_dump_json())
-
-                            elif event_type == "tool_start":
-                                await websocket.send_text(ToolStartOutbound(content=str(payload)).model_dump_json())
-
-                            elif event_type == "tool_done":
-                                if isinstance(payload, tuple) and len(payload) == 2:
-                                    t_content, t_tokens = payload
-                                    await websocket.send_text(ToolDoneOutbound(content=str(t_content), tokens=t_tokens).model_dump_json())
-                                else:
-                                    await websocket.send_text(ToolDoneOutbound(content=str(payload)).model_dump_json())
-
-                            elif event_type == "status":
-                                await websocket.send_text(StatusOutbound(content=str(payload)).model_dump_json())
-
-                    except Exception as exc:
-                        await websocket.send_text(ErrorOutbound(content=str(exc)).model_dump_json())
-                        await websocket.send_text(DoneOutbound().model_dump_json())
-                    finally:
-                        if not graph_task.done():
-                            graph_task.cancel()
-
-                session.generation_task = asyncio.create_task(_generate_task())
 
     except WebSocketDisconnect:
         pass
