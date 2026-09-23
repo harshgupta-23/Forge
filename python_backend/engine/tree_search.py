@@ -17,7 +17,7 @@ def evaluate_turn_outcome(turn_messages: list[BaseMessage]) -> float:
         return 0.5
 
     score = 1.0
-    tool_calls_seen = []
+    tool_calls_seen = set()
 
     for msg in turn_messages:
         if isinstance(msg, AIMessage):
@@ -26,7 +26,7 @@ def evaluate_turn_outcome(turn_messages: list[BaseMessage]) -> float:
                     sig = (tc.get("name", ""), str(tc.get("args", "")))
                     if sig in tool_calls_seen:
                         score -= 0.3  # Repetition loop penalty
-                    tool_calls_seen.append(sig)
+                    tool_calls_seen.add(sig)
 
         elif isinstance(msg, ToolMessage):
             c_str = str(msg.content or "").lower()

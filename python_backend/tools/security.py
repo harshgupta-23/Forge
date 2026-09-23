@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import uuid
+import contextvars
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -69,7 +70,7 @@ _BLOCKED_SUBSTRINGS = (
 
 def _is_unconditional_system_block(path: Path) -> bool:
     """Checks if a resolved path targets critical OS or credential directories."""
-    resolved = path.resolve(strict=False)
+    resolved = path if path.is_absolute() else path.resolve(strict=False)
     resolved_str = str(resolved)
     name_lower = resolved.name.lower()
 
@@ -119,15 +120,16 @@ def _is_unconditional_system_block(path: Path) -> bool:
 
 
 # ── 3. Workspace Path Jail & Attached Files ────────────────────────────────────
-_CURRENT_ATTACHED_FILES: dict[str, str] | list[str] = {}
+_CURRENT_ATTACHED_FILES: contextvars.ContextVar[dict[str, str] | list[str]] = contextvars.ContextVar(
+    "_CURRENT_ATTACHED_FILES", default={}
+)
 
 def set_active_attached_files(files: dict[str, str] | list[str] | None) -> None:
-    """Sets session-active attached files for global path security validation."""
-    global _CURRENT_ATTACHED_FILES
-    _CURRENT_ATTACHED_FILES = files or {}
+    """Sets session-active attached files for async-safe path security validation."""
+    _CURRENT_ATTACHED_FILES.set(files or {})
 
 def get_active_attached_files() -> dict[str, str] | list[str]:
-    return _CURRENT_ATTACHED_FILES
+    return _CURRENT_ATTACHED_FILES.get({})
 
 def is_path_safe(
     file_path: str | Path,
@@ -144,7 +146,7 @@ def is_path_safe(
     """
     try:
         if attached_files is None:
-            attached_files = _CURRENT_ATTACHED_FILES
+            attached_files = _CURRENT_ATTACHED_FILES.get({})
 
         raw_str = str(file_path).strip().strip('"').strip("'")
         if not raw_str:
@@ -175,7 +177,13 @@ def is_path_safe(
 
         # 3. Resolve workspace root
         if not work_dir:
-            work_dir = os.environ.get("AGENT_WORK_DIR") or Path.cwd()
+            try:
+                from server.dependencies import get_active_config
+                work_dir = get_active_config().get("AGENT_WORK_DIR")
+            except Exception:
+                work_dir = None
+            if not work_dir:
+                work_dir = os.environ.get("AGENT_WORK_DIR") or Path.cwd()
         resolved_work_dir = Path(work_dir).resolve(strict=False)
 
         # 4. Check workspace containment
@@ -255,8 +263,8 @@ _SECRET_PATTERNS = [
     (re.compile(r'\b(ghp|gho|ghu|ghs|ghr)_[a-zA-Z0-9]{36}\b'), '[REDACTED_GITHUB_TOKEN]'),
     # AWS Access Key IDs
     (re.compile(r'\b(AKIA|ABIA|ACCA|ASIA)[0-9A-Z]{16}\b'), '[REDACTED_AWS_KEY]'),
-    # Private Keys (RSA, EC, OpenSSH)
-    (re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----'), '[REDACTED_PRIVATE_KEY]'),
+    # Private Keys (RSA, EC, OpenSSH) - bounded length non-backtracking
+    (re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----[a-zA-Z0-9+/=\s]{16,8192}-----END [A-Z ]*PRIVATE KEY-----'), '[REDACTED_PRIVATE_KEY]'),
     # Database connection URLs with embedded passwords
     (re.compile(r'((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?):\/\/[^\s:]+:)([^@\s]+)(@)'), r'\1***\3'),
 ]

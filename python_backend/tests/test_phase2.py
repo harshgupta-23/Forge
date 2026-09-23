@@ -203,6 +203,7 @@ async def test_database_config_and_reconnect():
     assert saver is not None
     assert manager.backend_type.startswith("sqlite")
     await manager.close()
+    os.environ.pop("DATABASE_URL", None)
     print("✓ test_database_config_and_reconnect passed")
 
 

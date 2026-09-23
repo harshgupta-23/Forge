@@ -81,6 +81,12 @@ async def ingest_file(
     if not p.exists() or not p.is_file():
         raise FileNotFoundError(f"File not found: {file_path}")
 
+    # Enforce 50MB maximum file size limit to prevent unbounded memory consumption
+    MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
+    file_size = p.stat().st_size
+    if file_size > MAX_FILE_SIZE_BYTES:
+        raise ValueError(f"File size exceeds 50MB limit ({file_size / (1024 * 1024):.1f}MB): {filename}")
+
     # 1. Parsing
     if progress_callback:
         await progress_callback("parsing", 15, f"Reading {filename}...", 0)

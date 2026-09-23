@@ -23,7 +23,7 @@ def _fmt_args(args: dict[str, Any]) -> str:
     parts = []
     for k, v in args.items():
         s = str(v)
-        parts.append(f"{k}={s[:57] + '…' if len(s) > 60 else s!r}")
+        parts.append(f"{k}={s[:57] + '…'}" if len(s) > 60 else f"{k}={s!r}")
     return ", ".join(parts)
 
 

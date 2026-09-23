@@ -46,6 +46,19 @@ def pip_install(packages: str) -> str:
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             if res.returncode == 0:
                 result = res
+            else:
+                err_text = (res.stderr + " " + res.stdout).lower()
+                fatal_markers = [
+                    "no solution found", "not found", "no matching distribution",
+                    "could not find a version", "failed to fetch", "connection reset",
+                    "timed out", "network", "dns error", "connection error"
+                ]
+                if any(m in err_text for m in fatal_markers):
+                    result = res
+                else:
+                    result = None
+        except subprocess.TimeoutExpired:
+            return "ERROR: uv pip install timed out."
         except Exception:
             result = None
 

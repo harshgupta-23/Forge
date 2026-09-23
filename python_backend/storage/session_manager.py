@@ -1,9 +1,10 @@
 """
 session_manager.py — Manages active branch pointers, thread sessions, undo,
-and session history listing backed by database checkpointers.
+tree caching, and session history listing backed by database checkpointers.
 """
 
 import aiosqlite
+from datetime import datetime, timezone
 from typing import Optional, Any
 from langchain_core.messages import HumanMessage
 from storage.checkpointer import checkpoint_manager
@@ -13,12 +14,13 @@ import storage.checkpointer as checkpointer
 class SessionManager:
     """
     Tracks active checkpoint branches per thread, handles time-travel rollback,
-    and lists stored sessions.
+    caches tree states in memory, and lists stored sessions efficiently.
     """
 
     def __init__(self):
         self.active_checkpoints: dict[str, str] = {}
         self.current_thread_id: Optional[str] = None
+        self.tree_cache: dict[str, dict[str, Any]] = {}
 
     def get_active_checkpoint(self, thread_id: str) -> Optional[str]:
         return self.active_checkpoints.get(thread_id)
@@ -29,62 +31,68 @@ class SessionManager:
 
     async def delete_checkpoints(self, thread_id: str, checkpoint_ids: set[str]) -> None:
         """
-        Deletes specified checkpoints and their associated writes and metadata.
+        Deletes specified checkpoints and their associated writes and metadata in bulk.
+        Executes exactly 3 statements instead of an N+1 loop.
         """
         if not checkpoint_ids:
             return
 
+        cids = list(checkpoint_ids)
         if checkpoint_manager.backend_type == "postgres" and checkpoint_manager.pool:
             try:
                 async with checkpoint_manager.pool.connection() as conn:
                     async with conn.cursor() as cur:
-                        for cid in checkpoint_ids:
+                        await cur.execute(
+                            "DELETE FROM checkpoints WHERE thread_id = %s AND checkpoint_id = ANY(%s);",
+                            (thread_id, cids)
+                        )
+                        try:
                             await cur.execute(
-                                "DELETE FROM checkpoints WHERE thread_id = %s AND checkpoint_id = %s;",
-                                (thread_id, cid)
+                                "DELETE FROM checkpoint_writes WHERE thread_id = %s AND checkpoint_id = ANY(%s);",
+                                (thread_id, cids)
                             )
-                            try:
-                                await cur.execute(
-                                    "DELETE FROM checkpoint_writes WHERE thread_id = %s AND checkpoint_id = %s;",
-                                    (thread_id, cid)
-                                )
-                            except Exception:
-                                pass
-                            try:
-                                await cur.execute(
-                                    "DELETE FROM forge_checkpoint_metadata WHERE thread_id = %s AND checkpoint_id = %s;",
-                                    (thread_id, cid)
-                                )
-                            except Exception:
-                                pass
+                        except Exception:
+                            pass
+                        try:
+                            await cur.execute(
+                                "DELETE FROM forge_checkpoint_metadata WHERE thread_id = %s AND checkpoint_id = ANY(%s);",
+                                (thread_id, cids)
+                            )
+                        except Exception:
+                            pass
             except Exception as exc:
-                print(f"[session_manager] Failed to delete PostgreSQL checkpoints: {exc}")
+                print(f"[session_manager] Failed to bulk delete PostgreSQL checkpoints: {exc}")
         else:
-            if checkpointer.SQLITE_DB_PATH.exists():
+            db_path = getattr(checkpointer, "SQLITE_DB_PATH", None)
+            if db_path and db_path.exists():
                 try:
-                    async with aiosqlite.connect(str(checkpointer.SQLITE_DB_PATH)) as db:
-                        for cid in checkpoint_ids:
+                    async with aiosqlite.connect(str(db_path)) as db:
+                        placeholders = ",".join("?" for _ in cids)
+                        params = [thread_id] + cids
+                        await db.execute(
+                            f"DELETE FROM checkpoints WHERE thread_id = ? AND checkpoint_id IN ({placeholders});",
+                            params
+                        )
+                        try:
                             await db.execute(
-                                "DELETE FROM checkpoints WHERE thread_id = ? AND checkpoint_id = ?;",
-                                (thread_id, cid)
+                                f"DELETE FROM writes WHERE thread_id = ? AND checkpoint_id IN ({placeholders});",
+                                params
                             )
-                            try:
-                                await db.execute(
-                                    "DELETE FROM writes WHERE thread_id = ? AND checkpoint_id = ?;",
-                                    (thread_id, cid)
-                                )
-                            except Exception:
-                                pass
-                            try:
-                                await db.execute(
-                                    "DELETE FROM forge_checkpoint_metadata WHERE thread_id = ? AND checkpoint_id = ?;",
-                                    (thread_id, cid)
-                                )
-                            except Exception:
-                                pass
+                        except Exception:
+                            pass
+                        try:
+                            await db.execute(
+                                f"DELETE FROM forge_checkpoint_metadata WHERE thread_id = ? AND checkpoint_id IN ({placeholders});",
+                                params
+                            )
+                        except Exception:
+                            pass
                         await db.commit()
                 except Exception as exc:
-                    print(f"[session_manager] Failed to delete SQLite checkpoints: {exc}")
+                    print(f"[session_manager] Failed to bulk delete SQLite checkpoints: {exc}")
+
+        # Invalidate tree cache for this thread
+        self.tree_cache.pop(thread_id, None)
 
     async def undo(
         self,
@@ -207,63 +215,151 @@ class SessionManager:
 
         return new_active_cid, restored_messages
 
-    async def list_sessions(self, graph: Any) -> list[dict[str, Any]]:
+    async def record_turn(
+        self,
+        thread_id: str,
+        preview: str = "",
+        node_count_increment: int = 1,
+        label: Optional[str] = None
+    ) -> None:
         """
-        Lists distinct conversation threads from checkpointer storage.
+        Upserts session metadata into forge_session_summaries table for fast O(1) listing.
         """
-        sessions = []
-        threads = set()
-
+        now = datetime.now(timezone.utc).isoformat()
         if checkpoint_manager.backend_type == "postgres" and checkpoint_manager.pool:
             try:
                 async with checkpoint_manager.pool.connection() as conn:
                     async with conn.cursor() as cur:
-                        await cur.execute("SELECT DISTINCT thread_id FROM checkpoints;")
+                        await cur.execute("""
+                            INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
+                            VALUES (%s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (thread_id) DO UPDATE SET
+                                updated_at = EXCLUDED.updated_at,
+                                node_count = forge_session_summaries.node_count + EXCLUDED.node_count,
+                                preview = CASE WHEN EXCLUDED.preview <> '' THEN EXCLUDED.preview ELSE forge_session_summaries.preview END,
+                                label = COALESCE(EXCLUDED.label, forge_session_summaries.label);
+                        """, (thread_id, now, now, node_count_increment, preview, label))
+            except Exception as exc:
+                print(f"[session_manager] Failed to record turn in PostgreSQL: {exc}")
+        else:
+            db_path = getattr(checkpointer, "SQLITE_DB_PATH", None)
+            if db_path and db_path.exists():
+                try:
+                    async with aiosqlite.connect(str(db_path)) as db:
+                        await db.execute("""
+                            INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (thread_id) DO UPDATE SET
+                                updated_at = excluded.updated_at,
+                                node_count = forge_session_summaries.node_count + excluded.node_count,
+                                preview = CASE WHEN excluded.preview <> '' THEN excluded.preview ELSE forge_session_summaries.preview END,
+                                label = COALESCE(excluded.label, forge_session_summaries.label);
+                        """, (thread_id, now, now, node_count_increment, preview, label))
+                        await db.commit()
+                except Exception as exc:
+                    print(f"[session_manager] Failed to record turn in SQLite: {exc}")
+
+    async def list_sessions(self, graph: Any = None) -> list[dict[str, Any]]:
+        """
+        Lists distinct conversation threads via a single indexed query from forge_session_summaries.
+        Performs 0 calls to graph.aget_state_history().
+        """
+        sessions = []
+        if checkpoint_manager.backend_type == "postgres" and checkpoint_manager.pool:
+            try:
+                async with checkpoint_manager.pool.connection() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute("""
+                            SELECT thread_id, created_at, node_count, preview, label
+                            FROM forge_session_summaries
+                            ORDER BY updated_at DESC;
+                        """)
                         rows = await cur.fetchall()
                         for r in rows:
-                            if r[0]:
-                                threads.add(r[0])
+                            sessions.append({
+                                "session_id": r[0],
+                                "created_at": str(r[1]),
+                                "node_count": r[2],
+                                "preview": r[3] or "",
+                                "label": r[4],
+                            })
             except Exception as exc:
-                print(f"[session_manager] Failed to query PostgreSQL threads: {exc}")
+                print(f"[session_manager] Failed to query PostgreSQL session summaries: {exc}")
         else:
-            if checkpointer.SQLITE_DB_PATH.exists():
+            db_path = getattr(checkpointer, "SQLITE_DB_PATH", None)
+            if db_path and db_path.exists():
                 try:
-                    async with aiosqlite.connect(str(checkpointer.SQLITE_DB_PATH)) as db:
+                    async with aiosqlite.connect(str(db_path)) as db:
+                        async with db.execute("""
+                            SELECT thread_id, created_at, node_count, preview, label
+                            FROM forge_session_summaries
+                            ORDER BY updated_at DESC;
+                        """) as cursor:
+                            rows = await cursor.fetchall()
+                            for r in rows:
+                                sessions.append({
+                                    "session_id": r[0],
+                                    "created_at": str(r[1]),
+                                    "node_count": r[2],
+                                    "preview": r[3] or "",
+                                    "label": r[4],
+                                })
+                except Exception as exc:
+                    print(f"[session_manager] Failed to query SQLite session summaries: {exc}")
+
+        # Backward-compatibility fallback only if forge_session_summaries is empty but older checkpoints exist
+        if not sessions and graph is not None:
+            threads = set()
+            if checkpoint_manager.backend_type == "postgres" and checkpoint_manager.pool:
+                try:
+                    async with checkpoint_manager.pool.connection() as conn:
+                        async with conn.cursor() as cur:
+                            await cur.execute("SELECT DISTINCT thread_id FROM checkpoints;")
+                            rows = await cur.fetchall()
+                            for r in rows:
+                                if r[0]:
+                                    threads.add(r[0])
+                except Exception:
+                    pass
+            else:
+                if checkpointer.SQLITE_DB_PATH.exists():
+                    try:
+                        db = await metadata_store._get_sqlite_conn()
                         async with db.execute("SELECT DISTINCT thread_id FROM checkpoints;") as cursor:
                             rows = await cursor.fetchall()
                             for r in rows:
                                 if r[0]:
                                     threads.add(r[0])
-                except Exception as exc:
-                    print(f"[session_manager] Failed to query SQLite threads: {exc}")
+                    except Exception:
+                        pass
 
-        for tid in threads:
-            try:
-                snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
-                turns = [s for s in snapshots if not s.next]
-                if not turns:
+            for tid in threads:
+                try:
+                    snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
+                    turns = [s for s in snapshots if not s.next]
+                    if not turns:
+                        continue
+
+                    preview = ""
+                    for msg in turns[-1].values.get("messages", []):
+                        if isinstance(msg, HumanMessage):
+                            preview = str(msg.content)[:60]
+                            break
+
+                    created_at = turns[0].created_at if hasattr(turns[0], "created_at") else ""
+                    sessions.append({
+                        "session_id": tid,
+                        "created_at": str(created_at),
+                        "node_count": len(turns),
+                        "preview": preview,
+                        "label": None,
+                    })
+                except Exception:
                     continue
 
-                preview = ""
-                for msg in turns[-1].values.get("messages", []):
-                    if isinstance(msg, HumanMessage):
-                        preview = str(msg.content)[:60]
-                        break
+            sessions.sort(key=lambda s: s.get("created_at") or "", reverse=True)
 
-                created_at = turns[0].created_at if hasattr(turns[0], "created_at") else ""
-                sessions.append({
-                    "session_id": tid,
-                    "created_at": str(created_at),
-                    "node_count": len(turns),
-                    "preview": preview,
-                    "label": None,
-                })
-            except Exception:
-                continue
-
-        sessions.sort(key=lambda s: s.get("created_at") or "", reverse=True)
         return sessions
 
 
 session_manager = SessionManager()
-

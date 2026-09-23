@@ -8,6 +8,7 @@ import sys
 import json
 import glob
 import uuid
+import contextvars
 import pathlib
 from datetime import datetime, timezone
 from typing import Optional, Any
@@ -152,10 +153,36 @@ def apply_config_to_env(cfg: dict[str, Any]) -> None:
     except Exception:
         pass
 
-
 # Apply configuration at import time
 apply_config_to_env(load_config())
 
+
+# ── Per-request config isolation via contextvars ──────────────────────────────
+_ACTIVE_CONFIG: contextvars.ContextVar[dict[str, str]] = contextvars.ContextVar(
+    "_ACTIVE_CONFIG"
+)
+
+_CONFIG_KEYS = (
+    "API_KEY", "MODEL", "MODEL_PLANNER", "MODEL_SUMMARIZER", "MODEL_RERANKER",
+    "MODEL_TOPIC_GATE", "API_BASE", "API_BASE_PLANNER", "API_BASE_SUMMARIZER",
+    "API_BASE_RERANKER", "API_BASE_TOPIC_GATE", "API_KEY_PLANNER",
+    "API_KEY_SUMMARIZER", "API_KEY_RERANKER", "API_KEY_TOPIC_GATE",
+    "AGENT_WORK_DIR", "DATABASE_URL",
+)
+
+
+def set_active_config(cfg: dict[str, str]) -> None:
+    """Sets per-request config in the current async context (thread/task safe)."""
+    _ACTIVE_CONFIG.set(dict(cfg))
+
+
+def get_active_config() -> dict[str, str]:
+    """Returns per-request config, falling back to os.environ for each key."""
+    try:
+        return _ACTIVE_CONFIG.get()
+    except LookupError:
+        # No context-level config set — read from os.environ
+        return {k: os.environ[k] for k in _CONFIG_KEYS if k in os.environ}
 
 def serialize_message(msg: BaseMessage) -> Optional[dict[str, Any]]:
     from engine.utils import estimate_tokens

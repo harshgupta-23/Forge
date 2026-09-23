@@ -147,6 +147,14 @@ class TreeDataOutbound(BaseModel):
     nodes: dict[str, Any]
 
 
+class NodeAddedOutbound(BaseModel):
+    model_config = {"extra": "ignore"}
+    type: Literal["node_added"] = "node_added"
+    session_id: str
+    node: dict[str, Any]
+    active_node_id: str
+
+
 class StatusOutbound(BaseModel):
     type: Literal["status"] = "status"
     content: str

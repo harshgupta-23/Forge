@@ -60,44 +60,58 @@ if _WORK_DIR:
     SYSTEM_PROMPT += f"\n\nDEFAULT OUTPUT DIRECTORY: {_WORK_DIR}\nSave all output files here unless told otherwise."
 
 
-def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
-    """
-    Constructs OpenAI client configuring Google AI Studio query param keys,
-    OpenRouter metadata, or standard OpenAI-compatible endpoints.
-    Resolves model and optional credentials based on role ('agent', 'planner', 'summarizer', 'reranker').
-    Returns (client, model_name).
-    """
+def _resolve_config(role: str) -> tuple[str, str, str]:
+    """Resolves base_url, api_key, and model for a given role from active config."""
+    try:
+        from server.dependencies import get_active_config
+        cfg = get_active_config()
+    except Exception:
+        cfg = {}
+
+    def _get(key: str, default: str = "") -> str:
+        return (cfg.get(key) or os.environ.get(key, default)).strip()
+
     role_upper = role.upper()
-    base_url = (
-        os.environ.get(f"API_BASE_{role_upper}")
-        or os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/")
-    ).strip()
-    api_key = (
-        os.environ.get(f"API_KEY_{role_upper}")
-        or os.environ.get("API_KEY", "")
-    ).strip()
+    base_url = _get(f"API_BASE_{role_upper}") or _get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/")
+    api_key = _get(f"API_KEY_{role_upper}") or _get("API_KEY", "")
 
     if role == "planner":
-        model = os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+        model = _get("MODEL_PLANNER") or _get("MODEL", "gemma-4-26b-a4b-it")
     elif role == "summarizer":
-        model = os.environ.get("MODEL_SUMMARIZER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+        model = _get("MODEL_SUMMARIZER") or _get("MODEL", "gemma-4-26b-a4b-it")
     elif role == "reranker":
-        model = os.environ.get("MODEL_RERANKER") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+        model = _get("MODEL_RERANKER") or _get("MODEL_PLANNER") or _get("MODEL", "gemma-4-26b-a4b-it")
     elif role == "topic_gate":
-        model = os.environ.get("MODEL_TOPIC_GATE") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
+        model = _get("MODEL_TOPIC_GATE") or _get("MODEL_PLANNER") or _get("MODEL", "gemma-4-26b-a4b-it")
     else:
-        model = os.environ.get("MODEL", "gemma-4-26b-a4b-it")
-    model = model.strip()
+        model = _get("MODEL", "gemma-4-26b-a4b-it")
 
     if not api_key:
         raise RuntimeError(
             f"CRITICAL: API_KEY for role '{role}' is missing or blank. Please open Settings in the UI to add your API key."
         )
-
     if not base_url.endswith("/"):
         base_url += "/"
 
-    sdk_key = api_key
+    return base_url, api_key, model
+
+
+_SYNC_CLIENT_CACHE: dict[tuple[str, str, str], OpenAI] = {}
+
+
+def clear_sync_client_cache() -> None:
+    """Clears cached synchronous OpenAI client instances upon config updates."""
+    _SYNC_CLIENT_CACHE.clear()
+
+
+def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
+    """
+    Constructs or retrieves a cached synchronous OpenAI client.
+    Reads config from per-request ContextVar, falling back to os.environ.
+    Returns (client, model_name).
+    """
+    base_url, api_key, model = _resolve_config(role)
+
     extra_headers = {}
     parsed_url = urlparse(base_url)
     if "openrouter.ai" in (parsed_url.netloc or ""):
@@ -106,11 +120,16 @@ def get_openai_client(role: str = "agent") -> tuple[OpenAI, str]:
             "X-Title": "Forge Agent",
         }
 
+    cache_key = (base_url, api_key, role)
+    if cache_key in _SYNC_CLIENT_CACHE:
+        return _SYNC_CLIENT_CACHE[cache_key], model
+
     client = OpenAI(
         base_url=base_url,
-        api_key=sdk_key,
+        api_key=api_key,
         default_headers=extra_headers,
     )
+    _SYNC_CLIENT_CACHE[cache_key] = client
     return client, model
 
 
@@ -124,45 +143,12 @@ def clear_async_client_cache() -> None:
 
 def get_async_openai_client(role: str = "agent") -> tuple[AsyncOpenAI, str]:
     """
-    Constructs or retrieves a cached AsyncOpenAI client, resolving models and endpoints by role:
-    - "agent": Primary reasoning model (MODEL, default: gemma-4-26b-a4b-it)
-    - "planner": Lightweight planner model (MODEL_PLANNER, fallback: MODEL)
-    - "summarizer": High-throughput summarizer model (MODEL_SUMMARIZER, fallback: MODEL)
-    - "reranker": Fast cross-encoder reranker model (MODEL_RERANKER, fallback: MODEL_PLANNER or MODEL)
+    Constructs or retrieves a cached AsyncOpenAI client.
+    Reads config from per-request ContextVar, falling back to os.environ.
     Returns (async_client, model_name).
     """
-    role_upper = role.upper()
-    base_url = (
-        os.environ.get(f"API_BASE_{role_upper}")
-        or os.environ.get("API_BASE", "https://generativelanguage.googleapis.com/v1beta/openai/")
-    ).strip()
-    api_key = (
-        os.environ.get(f"API_KEY_{role_upper}")
-        or os.environ.get("API_KEY", "")
-    ).strip()
+    base_url, api_key, model = _resolve_config(role)
 
-    if not api_key:
-        raise RuntimeError(
-            f"CRITICAL: API_KEY for role '{role}' is missing or blank. Please open Settings in the UI to add your API key."
-        )
-
-    # Role-based model decoupling
-    if role == "planner":
-        model = os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
-    elif role == "summarizer":
-        model = os.environ.get("MODEL_SUMMARIZER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
-    elif role == "reranker":
-        model = os.environ.get("MODEL_RERANKER") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
-    elif role == "topic_gate":
-        model = os.environ.get("MODEL_TOPIC_GATE") or os.environ.get("MODEL_PLANNER") or os.environ.get("MODEL", "gemma-4-26b-a4b-it")
-    else:
-        model = os.environ.get("MODEL", "gemma-4-26b-a4b-it")
-    model = model.strip()
-
-    if not base_url.endswith("/"):
-        base_url += "/"
-
-    sdk_key = api_key
     extra_headers = {}
     parsed_url = urlparse(base_url)
     if "openrouter.ai" in (parsed_url.netloc or ""):
@@ -171,13 +157,13 @@ def get_async_openai_client(role: str = "agent") -> tuple[AsyncOpenAI, str]:
             "X-Title": "Forge Agent",
         }
 
-    cache_key = (base_url, sdk_key, role)
+    cache_key = (base_url, api_key, role)
     if cache_key in _ASYNC_CLIENT_CACHE:
         return _ASYNC_CLIENT_CACHE[cache_key], model
 
     client = AsyncOpenAI(
         base_url=base_url,
-        api_key=sdk_key,
+        api_key=api_key,
         default_headers=extra_headers,
     )
     _ASYNC_CLIENT_CACHE[cache_key] = client
@@ -270,7 +256,7 @@ def count_tokens(messages: list[BaseMessage]) -> int:
     return total_chars // 4
 
 
-def summarise_history(messages: list[BaseMessage], attached_files: dict[str, str]) -> list[BaseMessage]:
+async def summarise_history(messages: list[BaseMessage], attached_files: dict[str, str]) -> list[BaseMessage]:
     """
     Compresses conversation history into a concise summary while retaining
     the last 2 turns verbatim.
@@ -297,11 +283,11 @@ def summarise_history(messages: list[BaseMessage], attached_files: dict[str, str
             transcript_lines.append(f"TOOL({name}): {str(msg.content)[:300]}")
 
     summary_prompt = "\n".join(transcript_lines)
-    client, model = get_openai_client()
+    client, model = get_async_openai_client("summarizer")
     contents = build_model_contents([HumanMessage(content=summary_prompt)], attached_files)
 
     try:
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=model,
             messages=contents
         )

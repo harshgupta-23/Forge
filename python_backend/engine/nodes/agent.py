@@ -118,37 +118,53 @@ class StreamingThoughtFilter:
         if self.suppress_all or not text:
             return
 
-        self.buffer += text
-        buf_lower = self.buffer.lower()
+        if self.inside_thought:
+            # Inside thought tag: keep only up to 64 chars of preceding buffer to detect closing tags
+            combined = (self.buffer[-64:] if len(self.buffer) > 64 else self.buffer) + text
+            c_lower = combined.lower()
+            if "</thought>" in c_lower:
+                end_idx = c_lower.find("</thought>") + len("</thought>")
+                self.buffer = combined[end_idx:]
+                self.inside_thought = False
+            elif "</thinking>" in c_lower:
+                end_idx = c_lower.find("</thinking>") + len("</thinking>")
+                self.buffer = combined[end_idx:]
+                self.inside_thought = False
+            else:
+                self.buffer = combined[-64:]
+                return
+        else:
+            self.buffer += text
+            buf_lower = self.buffer.lower()
 
-        # If XML tool call is detected in stream, suppress chat token output
-        if "<tool_call" in buf_lower:
-            self.suppress_all = True
-            return
-
-        # Hysteresis buffer check before flushing initial tokens
-        if not self.flushed_hysteresis:
-            if "<" in self.buffer:
-                # Potential tag starting; wait until tag resolves or closes
-                if "<thought" in buf_lower or "<thinking" in buf_lower:
-                    self.inside_thought = True
-                    if "</thought>" in buf_lower:
-                        end_idx = buf_lower.find("</thought>") + len("</thought>")
-                        self.buffer = self.buffer[end_idx:]
-                        self.inside_thought = False
-                    elif "</thinking>" in buf_lower:
-                        end_idx = buf_lower.find("</thinking>") + len("</thinking>")
-                        self.buffer = self.buffer[end_idx:]
-                        self.inside_thought = False
-                    else:
-                        return
-                elif len(self.buffer) < self.hysteresis_chars:
-                    return
-
-            if len(self.buffer) < self.hysteresis_chars:
+            # If XML tool call is detected in stream, suppress chat token output
+            if "<tool_call" in buf_lower:
+                self.suppress_all = True
                 return
 
-            self.flushed_hysteresis = True
+            # Hysteresis buffer check before flushing initial tokens
+            if not self.flushed_hysteresis:
+                if "<" in self.buffer:
+                    if "<thought" in buf_lower or "<thinking" in buf_lower:
+                        self.inside_thought = True
+                        if "</thought>" in buf_lower:
+                            end_idx = buf_lower.find("</thought>") + len("</thought>")
+                            self.buffer = self.buffer[end_idx:]
+                            self.inside_thought = False
+                        elif "</thinking>" in buf_lower:
+                            end_idx = buf_lower.find("</thinking>") + len("</thinking>")
+                            self.buffer = self.buffer[end_idx:]
+                            self.inside_thought = False
+                        else:
+                            self.buffer = self.buffer[-64:]
+                            return
+                    elif len(self.buffer) < self.hysteresis_chars:
+                        return
+
+                if len(self.buffer) < self.hysteresis_chars:
+                    return
+
+                self.flushed_hysteresis = True
 
         # Process and stream clean content
         await self._process_stream()
@@ -252,7 +268,7 @@ async def agent_node(state: AgentState, config: RunnableConfig = None) -> dict[s
     if queue:
         await queue.put(("status", "Thinking…"))
 
-    full_content = ""
+    content_chunks: list[str] = []
     tool_call_chunks: dict[int, dict[str, Any]] = {}
     stream_filter = StreamingThoughtFilter(queue=queue)
 
@@ -310,31 +326,33 @@ async def agent_node(state: AgentState, config: RunnableConfig = None) -> dict[s
                     if idx not in tool_call_chunks:
                         tool_call_chunks[idx] = {
                             "id": tc.id or f"call_{idx}",
-                            "name": tc.function.name if tc.function and tc.function.name else "",
-                            "arguments": tc.function.arguments if tc.function and tc.function.arguments else ""
+                            "name_chunks": [tc.function.name] if tc.function and tc.function.name else [],
+                            "arg_chunks": [tc.function.arguments] if tc.function and tc.function.arguments else []
                         }
                     else:
                         if tc.id:
                             tool_call_chunks[idx]["id"] = tc.id
                         if tc.function and tc.function.name:
-                            tool_call_chunks[idx]["name"] += tc.function.name
+                            tool_call_chunks[idx]["name_chunks"].append(tc.function.name)
                         if tc.function and tc.function.arguments:
-                            tool_call_chunks[idx]["arguments"] += tc.function.arguments
+                            tool_call_chunks[idx]["arg_chunks"].append(tc.function.arguments)
 
             if delta.content:
-                full_content += delta.content
+                content_chunks.append(delta.content)
                 await stream_filter.feed(delta.content)
     except Exception as exc:
         err_msg = f"[Streaming Error]: {exc}"
         if queue:
             await queue.put(("error", err_msg))
 
+    full_content = "".join(content_chunks)
+
     # Assemble native tool calls
     parsed_tool_calls: list[dict[str, Any]] = []
     for idx in sorted(tool_call_chunks.keys()):
         raw_tc = tool_call_chunks[idx]
-        name = raw_tc["name"]
-        raw_args = raw_tc["arguments"]
+        name = "".join(raw_tc["name_chunks"])
+        raw_args = "".join(raw_tc["arg_chunks"])
         parsed_args = {}
         if raw_args and raw_args.strip():
             try:

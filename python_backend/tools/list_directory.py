@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from langchain_core.tools import tool
 
@@ -23,10 +24,21 @@ def list_directory(directory_path: str) -> str:
         return f"ERROR: Path is not a directory — {path}"
 
     lines = [f"Contents of {path}:\n"]
-    for item in sorted(path.iterdir()):
-        kind = "DIR " if item.is_dir() else "FILE"
-        size = ""
-        if item.is_file():
-            size = f"  {item.stat().st_size:,} bytes"
-        lines.append(f"  [{kind}]  {item.name}{size}")
+    try:
+        with os.scandir(path) as it:
+            entries = sorted(it, key=lambda e: e.name)
+            for entry in entries:
+                is_d = entry.is_dir(follow_symlinks=False)
+                is_f = entry.is_file(follow_symlinks=False)
+                kind = "DIR " if is_d else "FILE"
+                size = ""
+                if is_f:
+                    try:
+                        size = f"  {entry.stat(follow_symlinks=False).st_size:,} bytes"
+                    except OSError:
+                        size = ""
+                lines.append(f"  [{kind}]  {entry.name}{size}")
+    except OSError as e:
+        return f"ERROR: Could not read directory — {e}"
+
     return "\n".join(lines) if len(lines) > 1 else f"{path} is empty."

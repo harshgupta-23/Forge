@@ -20,6 +20,76 @@ except Exception:
 
 SQLITE_DB_PATH = AGENT_HOME / "forge_checkpoints.db"
 
+import asyncio
+try:
+    import aiosqlite.core
+
+    if not getattr(aiosqlite.core, "_FORGE_PATCHED", False):
+        from threading import Thread
+
+        def _safe_worker_thread(tx):
+            while True:
+                future, function = tx.get()
+                try:
+                    result = function()
+                    if future:
+                        try:
+                            loop = future.get_loop()
+                            if not loop.is_closed():
+                                loop.call_soon_threadsafe(aiosqlite.core.set_result, future, result)
+                        except Exception:
+                            pass
+                    if result is aiosqlite.core._STOP_RUNNING_SENTINEL:
+                        break
+                except BaseException as e:
+                    if future:
+                        try:
+                            loop = future.get_loop()
+                            if not loop.is_closed():
+                                loop.call_soon_threadsafe(aiosqlite.core.set_exception, future, e)
+                        except Exception:
+                            pass
+                    if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                        raise
+
+        _orig_conn_init = aiosqlite.core.Connection.__init__
+
+        def _daemon_conn_init(self, *args, **kwargs):
+            _orig_conn_init(self, *args, **kwargs)
+            if hasattr(self, "_tx"):
+                self._thread = Thread(target=_safe_worker_thread, args=(self._tx,), daemon=True)
+
+        aiosqlite.core.Connection.__init__ = _daemon_conn_init
+
+        def _safe_conn_stop(self):
+            self._running = False
+
+            def _close_and_stop():
+                if self._connection is not None:
+                    try:
+                        self._connection.close()
+                    except Exception:
+                        pass
+                    self._connection = None
+                return aiosqlite.core._STOP_RUNNING_SENTINEL
+
+            future = None
+            try:
+                loop = asyncio.get_running_loop()
+                if loop and not loop.is_closed():
+                    future = loop.create_future()
+            except RuntimeError:
+                future = None
+
+            self._tx.put_nowait((future, _close_and_stop))
+            return future
+
+        aiosqlite.core.Connection.stop = _safe_conn_stop
+        aiosqlite.core._FORGE_PATCHED = True
+except Exception:
+    pass
+
+
 
 class CheckpointManager:
     """
@@ -43,9 +113,13 @@ class CheckpointManager:
                 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
                 print(f"[checkpointer] Attempting connection to PostgreSQL at {self.db_url.split('@')[-1]}...")
+                conninfo = self.db_url
+                if "connect_timeout" not in conninfo:
+                    conninfo += ("&" if "?" in conninfo else "?") + "connect_timeout=2"
                 self.pool = AsyncConnectionPool(
-                    conninfo=self.db_url,
+                    conninfo=conninfo,
                     max_size=10,
+                    timeout=2.0,
                     open=False
                 )
                 await self.exit_stack.enter_async_context(self.pool)
@@ -56,6 +130,11 @@ class CheckpointManager:
                 return self.saver
             except Exception as exc:
                 print(f"[checkpointer] PostgreSQL connection failed ({exc}). Falling back to local SQLite...")
+                try:
+                    await self.exit_stack.aclose()
+                except Exception:
+                    pass
+                self.exit_stack = AsyncExitStack()
                 if self.pool:
                     try:
                         await self.pool.close()
@@ -86,8 +165,35 @@ class CheckpointManager:
         """Closes connection pools and checkpointer context stack cleanly."""
         print("[checkpointer] Closing checkpointer connection stack...")
         await self.exit_stack.aclose()
+        if hasattr(self, "saver") and self.saver:
+            conn = getattr(self.saver, "conn", None)
+            if conn and hasattr(conn, "_connection"):
+                raw = getattr(conn, "_connection", None)
+                if raw:
+                    try:
+                        raw.close()
+                    except Exception:
+                        pass
+                conn._running = False
+                conn._connection = None
         self.saver = None
         self.pool = None
+
+    def __del__(self):
+        try:
+            if hasattr(self, "saver") and self.saver:
+                conn = getattr(self.saver, "conn", None)
+                if conn and hasattr(conn, "_connection"):
+                    raw = getattr(conn, "_connection", None)
+                    if raw:
+                        try:
+                            raw.close()
+                        except Exception:
+                            pass
+                    conn._running = False
+                    conn._connection = None
+        except Exception:
+            pass
 
     async def reconnect(self, new_db_url: Optional[str] = None) -> Any:
         """Closes existing connections and reinitializes with an updated database URL."""

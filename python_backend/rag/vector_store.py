@@ -320,15 +320,47 @@ class VectorStore:
         query_terms = [t.lower() for t in query.split() if len(t) > 1]
         results = []
 
+        candidate_limit = min(500, max(50, limit * 10))
         async with aiosqlite.connect(str(LOCAL_DB_PATH)) as db:
-            sql = "SELECT id, session_id, file_path, filename, chunk_index, content, embedding, metadata FROM forge_document_chunks"
-            params = ()
+            where_clauses = []
+            base_params: list[Any] = []
             if session_id:
-                sql += " WHERE session_id = ? OR session_id = 'global'"
-                params = (session_id,)
+                where_clauses.append("(session_id = ? OR session_id = 'global')")
+                base_params.append(session_id)
 
-            async with db.execute(sql, params) as cursor:
-                rows = await cursor.fetchall()
+            # Stage 1: Keyword pre-filtering
+            rows = []
+            if query_terms:
+                like_conditions = " OR ".join(["content LIKE ?" for _ in query_terms[:5]])
+                where_keyword = f"({' AND '.join(where_clauses)} AND ({like_conditions}))" if where_clauses else f"({like_conditions})"
+                keyword_params = list(base_params) + [f"%{term}%" for term in query_terms[:5]] + [candidate_limit]
+                sql_keyword = f"SELECT id, session_id, file_path, filename, chunk_index, content, embedding, metadata FROM forge_document_chunks WHERE {where_keyword} LIMIT ?"
+                try:
+                    async with db.execute(sql_keyword, keyword_params) as cursor:
+                        rows = await cursor.fetchall()
+                except Exception:
+                    rows = []
+
+            # Stage 2: Backfill up to candidate_limit if needed
+            if len(rows) < candidate_limit:
+                already_ids = [r[0] for r in rows]
+                backfill_where = list(where_clauses)
+                backfill_params = list(base_params)
+                if already_ids:
+                    placeholders = ",".join("?" for _ in already_ids)
+                    backfill_where.append(f"id NOT IN ({placeholders})")
+                    backfill_params.extend(already_ids)
+
+                remaining = candidate_limit - len(rows)
+                where_str = f" WHERE {' AND '.join(backfill_where)}" if backfill_where else ""
+                sql_backfill = f"SELECT id, session_id, file_path, filename, chunk_index, content, embedding, metadata FROM forge_document_chunks{where_str} LIMIT ?"
+                backfill_params.append(remaining)
+                try:
+                    async with db.execute(sql_backfill, backfill_params) as cursor:
+                        more_rows = await cursor.fetchall()
+                        rows.extend(more_rows)
+                except Exception:
+                    pass
 
         if not rows:
             return []

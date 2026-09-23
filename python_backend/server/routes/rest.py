@@ -14,6 +14,7 @@ from server.dependencies import (
     load_config,
     save_config,
     apply_config_to_env,
+    set_active_config,
     list_available_sessions,
     SESSION_DIR
 )
@@ -46,6 +47,7 @@ async def update_configuration(config: ConfigModel):
     """Updates configuration and applies values immediately to the environment."""
     data = config.model_dump()
     save_config(data)
+    set_active_config(data)
     apply_config_to_env(data)
     return {"status": "success", "message": "Configuration saved and applied."}
 
@@ -53,7 +55,7 @@ async def update_configuration(config: ConfigModel):
 @rest_router.get("/api/sessions", response_model=list[SessionSummaryModel])
 async def get_sessions():
     """Lists saved non-empty sessions."""
-    sessions = list_available_sessions()
+    sessions = await asyncio.to_thread(list_available_sessions)
     return [SessionSummaryModel(**s) for s in sessions]
 
 
@@ -66,6 +68,8 @@ async def chat_sse_stream(request: ChatRequestModel):
     cfg = load_config()
     if not cfg.get("API_KEY"):
         raise HTTPException(status_code=400, detail="API_KEY is not configured.")
+
+    set_active_config(cfg)
 
     initial_state = {
         "messages": [HumanMessage(content=request.content)],
@@ -107,8 +111,12 @@ async def upload_file(payload: FileUploadModel):
         safe_name = Path(payload.name).name or "attached_file"
         file_path = UPLOAD_DIR / safe_name
         data = base64.b64decode(payload.content_base64)
-        with open(file_path, "wb") as f:
-            f.write(data)
+
+        def _write_sync():
+            with open(file_path, "wb") as f:
+                f.write(data)
+
+        await asyncio.to_thread(_write_sync)
         return {
             "status": "success",
             "name": safe_name,

@@ -2,12 +2,14 @@ import os
 import re
 import sys
 import subprocess
+import threading
 from pathlib import Path
 from langchain_core.tools import tool
 
 os.environ["PLAYWRIGHT_LOOP_ALLOW_THREAD_SWITCH"] = "1"
 _PLAYWRIGHT_INSTANCE = None
 _PERSISTENT_CONTEXT = None
+_BROWSER_LOCK = threading.Lock()
 
 def _ensure_playwright():
     try:
@@ -19,6 +21,56 @@ def _ensure_playwright():
         subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], timeout=300)
         from playwright.sync_api import sync_playwright
         return sync_playwright
+
+
+def get_browser_context(headless: bool = True):
+    """Returns the shared Playwright browser context singleton."""
+    global _PLAYWRIGHT_INSTANCE, _PERSISTENT_CONTEXT
+    with _BROWSER_LOCK:
+        if _PERSISTENT_CONTEXT is not None:
+            try:
+                _ = _PERSISTENT_CONTEXT.pages
+                return _PERSISTENT_CONTEXT
+            except Exception:
+                _PERSISTENT_CONTEXT = None
+
+        if _PLAYWRIGHT_INSTANCE is None:
+            sync_playwright = _ensure_playwright()
+            _PLAYWRIGHT_INSTANCE = sync_playwright().start()
+
+        user_data_dir = os.environ.get("CHROME_USER_DATA_DIR", str(Path.home() / ".forge" / "chrome_profile"))
+        try:
+            _PERSISTENT_CONTEXT = _PLAYWRIGHT_INSTANCE.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                channel="chrome",
+                headless=headless,
+                viewport={"width": 1280, "height": 800},
+                accept_downloads=True,
+            )
+        except Exception:
+            browser = _PLAYWRIGHT_INSTANCE.chromium.launch(headless=headless)
+            _PERSISTENT_CONTEXT = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+
+        return _PERSISTENT_CONTEXT
+
+
+def close_browser():
+    """Cleanup function to shut down the shared Playwright process."""
+    global _PLAYWRIGHT_INSTANCE, _PERSISTENT_CONTEXT
+    with _BROWSER_LOCK:
+        if _PERSISTENT_CONTEXT:
+            try:
+                _PERSISTENT_CONTEXT.close()
+            except Exception:
+                pass
+            _PERSISTENT_CONTEXT = None
+        if _PLAYWRIGHT_INSTANCE:
+            try:
+                _PLAYWRIGHT_INSTANCE.stop()
+            except Exception:
+                pass
+            _PLAYWRIGHT_INSTANCE = None
+
 
 @tool
 def browser_action(instructions: str) -> str:
@@ -59,27 +111,10 @@ def browser_action(instructions: str) -> str:
     results    = []
     timeout_ms = 30_000
 
-    p = None
-    context = None
-
+    page = None
     try:
-        p = sync_playwright().start()
-        user_data_dir = os.environ.get("CHROME_USER_DATA_DIR", str(Path.home() / ".forge" / "chrome_profile"))
-
-        try:
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=user_data_dir,
-                channel="chrome",
-                headless=headless,
-                viewport={"width": 1280, "height": 800},
-                accept_downloads=True,
-            )
-            results.append("Launched Chrome (background)." if headless else "Launched Chrome.")
-        except Exception as e:
-            browser = p.chromium.launch(headless=headless)
-            context = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
-            results.append("Using Chromium (background)." if headless else "Using Chromium.")
-        page = context.pages[0] if context.pages else context.new_page()
+        context = get_browser_context(headless=headless)
+        page = context.new_page()
 
         if start_url:
             print(f"  \033[90m[browser] → {start_url}\033[0m", flush=True)
@@ -163,14 +198,9 @@ def browser_action(instructions: str) -> str:
     except Exception as exc:
         return f"ERROR in browser_action: {exc}"
     finally:
-        # Cleanly close browser context and terminate the background process
-        if context:
+        # Close only the page created for this action, leaving shared browser singleton alive
+        if page:
             try:
-                context.close()
-            except Exception:
-                pass
-        if p:
-            try:
-                p.stop()
+                page.close()
             except Exception:
                 pass

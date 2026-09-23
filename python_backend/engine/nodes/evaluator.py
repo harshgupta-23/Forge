@@ -26,6 +26,19 @@ def _is_error_content(content: str) -> bool:
     ))
 
 
+def _normalize_args(args: Any) -> str:
+    """Safely normalizes tool arguments into a deterministic string representation without crashing on non-serializable objects."""
+    if not isinstance(args, dict):
+        return repr(args)
+    try:
+        return json.dumps(args, sort_keys=True)
+    except (TypeError, ValueError):
+        try:
+            return repr(sorted((str(k), repr(v)) for k, v in args.items()))
+        except Exception:
+            return repr(args)
+
+
 def get_failing_tool_signatures(messages: list) -> list[str]:
     """Extracts canonical signatures of tool calls that repeat prior failed invocations."""
     if len(messages) < 3:
@@ -39,7 +52,7 @@ def get_failing_tool_signatures(messages: list) -> list[str]:
     for tc in current_ai.tool_calls:
         try:
             name = tc.get("name", "")
-            args_str = json.dumps(tc.get("args", {}), sort_keys=True)
+            args_str = _normalize_args(tc.get("args", {}))
             current_calls[(name, args_str)] = tc
         except Exception:
             pass
@@ -63,7 +76,7 @@ def get_failing_tool_signatures(messages: list) -> list[str]:
                                 try:
                                     prior_key = (
                                         prior_tc.get("name"),
-                                        json.dumps(prior_tc.get("args", {}), sort_keys=True)
+                                        _normalize_args(prior_tc.get("args", {}))
                                     )
                                     if prior_key in current_calls:
                                         sig = f"{prior_key[0]}:{prior_key[1]}"

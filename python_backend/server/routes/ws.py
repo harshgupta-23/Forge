@@ -27,6 +27,7 @@ from server.schemas.events import (
     SummarisedOutbound,
     ChatHistoryOutbound,
     TreeDataOutbound,
+    NodeAddedOutbound,
     IndexingProgressOutbound,
     BranchPromptOutbound,
 )
@@ -36,6 +37,7 @@ from server.dependencies import (
     load_config,
     save_config,
     apply_config_to_env,
+    set_active_config,
     log_token_usage,
     get_token_usage_windows,
     serialize_message,
@@ -106,8 +108,20 @@ class ConnectionManager:
                 except Exception:
                     pass
 
-    async def broadcast_state_and_tree(self, thread_id: str) -> None:
-        """Pushes current state and tree data to all sockets connected to this thread_id."""
+    async def propagate_session_switch(self, old_tid: str, new_tid: str, source_ws: WebSocket | None = None) -> None:
+        """Notifies secondary/detached windows when the active session is switched."""
+        switched_event = json.dumps({"type": "session_switched", "session_id": new_tid})
+        for ws, s in list(self.socket_sessions.items()):
+            if ws != source_ws and self.socket_roles.get(ws) == "secondary" and s.thread_id == old_tid:
+                self.rebind_session(ws, old_tid, new_tid)
+                s.thread_id = new_tid
+                try:
+                    await ws.send_text(switched_event)
+                except Exception:
+                    pass
+
+    async def send_or_broadcast_state_and_tree(self, thread_id: str, target_ws: WebSocket | None = None) -> None:
+        """Pushes current state and tree data to target socket or broadcasts to all sockets in session."""
         active_cid = session_manager.get_active_checkpoint(thread_id)
         graph = get_compiled_graph()
         snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": thread_id}})]
@@ -116,6 +130,7 @@ class ConnectionManager:
         tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, meta_map)
         effective_active = tree_dict.get("active_node_id", "node_root")
         session_manager.set_active_checkpoint(thread_id, effective_active)
+        session_manager.tree_cache[thread_id] = tree_dict
 
         active_msgs = []
         if effective_active != "node_root":
@@ -139,8 +154,16 @@ class ConnectionManager:
             nodes=tree_dict.get("nodes", {})
         ).model_dump_json()
 
-        await self.broadcast_to_session(thread_id, chat_json)
-        await self.broadcast_to_session(thread_id, tree_json)
+        if target_ws:
+            await target_ws.send_text(chat_json)
+            await target_ws.send_text(tree_json)
+        else:
+            await self.broadcast_to_session(thread_id, chat_json)
+            await self.broadcast_to_session(thread_id, tree_json)
+
+    async def broadcast_state_and_tree(self, thread_id: str) -> None:
+        """Pushes current state and tree data to all sockets connected to this thread_id."""
+        await self.send_or_broadcast_state_and_tree(thread_id)
 
     def primary_count(self) -> int:
         return len(self.primary_connections)
@@ -186,42 +209,7 @@ class ActiveSession:
 
 async def send_state_and_tree(websocket: WebSocket, session: ActiveSession) -> None:
     """Queries checkpointer history and pushes serialized tree and chat path to frontend."""
-    thread_id = session.thread_id
-    active_cid = session_manager.get_active_checkpoint(thread_id)
-
-    graph = get_compiled_graph()
-    snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": thread_id}})]
-    meta_map = await metadata_store.get_metadata_map(thread_id)
-
-    tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, meta_map)
-    effective_active = tree_dict.get("active_node_id", "node_root")
-    session_manager.set_active_checkpoint(thread_id, effective_active)
-
-    # Resolve messages along active branch
-    active_msgs = []
-    if effective_active != "node_root":
-        # Find snapshot matching effective_active
-        for s in snapshots:
-            cid = s.config.get("configurable", {}).get("checkpoint_id")
-            if cid == effective_active:
-                active_msgs = s.values.get("messages", [])
-                break
-
-    serialized_path = [serialize_message(m) for m in active_msgs if serialize_message(m) is not None]
-
-    chat_out = ChatHistoryOutbound(
-        messages=serialized_path,
-        active_node_id=effective_active
-    )
-    await websocket.send_text(chat_out.model_dump_json())
-
-    tree_out = TreeDataOutbound(
-        session_id=thread_id,
-        root_id=tree_dict.get("root_id", "node_root"),
-        active_node_id=effective_active,
-        nodes=tree_dict.get("nodes", {})
-    )
-    await websocket.send_text(tree_out.model_dump_json())
+    await manager.send_or_broadcast_state_and_tree(session.thread_id, target_ws=websocket)
 
 
 @ws_router.websocket("/")
@@ -229,6 +217,7 @@ async def send_state_and_tree(websocket: WebSocket, session: ActiveSession) -> N
 async def websocket_endpoint(websocket: WebSocket):
     global shutdown_task
     await websocket.accept()
+    set_active_config(load_config())
 
     role = websocket.query_params.get("role", "main").lower()
     requested_session_id = websocket.query_params.get("session_id")
@@ -317,7 +306,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                     parent_msgs = s.values.get("messages", [])
                                     break
 
-                        u_msg, a_msg, t_calls, t_results, _ = _extract_turn_messages(active_msgs, parent_msgs)
+                        u_msg, a_msg, t_calls, t_results, inter_serialized = _extract_turn_messages(active_msgs, parent_msgs)
                         u_tok = u_msg.get("tokens", 0) if u_msg else 0
                         t_call_tok = sum(estimate_tokens(tc.get("name", "")) + estimate_tokens(str(tc.get("args", ""))) for tc in t_calls)
                         t_res_tok = sum(r.get("tokens", 0) for r in t_results)
@@ -338,13 +327,61 @@ async def websocket_endpoint(websocket: WebSocket):
                         log_token_usage(tokens)
                         await websocket.send_text(TokenUsageWindowsOutbound(**get_token_usage_windows()).model_dump_json())
 
+                        # Record turn in forge_session_summaries for O(1) session listing
+                        preview = (u_msg.get("content", "") if u_msg else "")[:60]
+                        await session_manager.record_turn(t_id, preview, node_count_increment=1)
+
                         # Run background dead-end detection on updated graph
                         await auto_prune_dead_ends(t_id, snapshots)
 
                     if event_type == "cancelled":
                         await websocket.send_text(StatusOutbound(content="Generation stopped by user.").model_dump_json())
 
-                    await manager.broadcast_state_and_tree(t_id)
+                    # Incremental tree update if cached, else full broadcast
+                    if t_id in session_manager.tree_cache and snapshots and latest_turn_cid:
+                        tree_dict = session_manager.tree_cache[t_id]
+                        new_node = {
+                            "id": latest_turn_cid,
+                            "parent_id": parent_cid or "node_root",
+                            "children_ids": [],
+                            "created_at": str(snapshots[0].created_at if hasattr(snapshots[0], "created_at") else ""),
+                            "type": "turn",
+                            "user_message": u_msg,
+                            "agent_message": a_msg,
+                            "tool_calls": t_calls,
+                            "tool_results": t_results,
+                            "label": None,
+                            "is_pruned": False,
+                            "intermediate_messages": inter_serialized,
+                            "tokens": {
+                                "user": u_tok,
+                                "tools": t_tok,
+                                "agent": a_tok,
+                                "total": turn_tok
+                            }
+                        }
+                        tree_dict.setdefault("nodes", {})[latest_turn_cid] = new_node
+                        tree_dict["active_node_id"] = latest_turn_cid
+                        p_id = new_node["parent_id"]
+                        if p_id in tree_dict["nodes"]:
+                            if latest_turn_cid not in tree_dict["nodes"][p_id].get("children_ids", []):
+                                tree_dict["nodes"][p_id].setdefault("children_ids", []).append(latest_turn_cid)
+
+                        node_added_json = NodeAddedOutbound(
+                            session_id=t_id,
+                            node=new_node,
+                            active_node_id=latest_turn_cid
+                        ).model_dump_json()
+                        await manager.broadcast_to_session(t_id, node_added_json)
+
+                        serialized_path = [serialize_message(m) for m in active_msgs if serialize_message(m) is not None]
+                        chat_json = ChatHistoryOutbound(
+                            messages=serialized_path,
+                            active_node_id=latest_turn_cid
+                        ).model_dump_json()
+                        await manager.broadcast_to_session(t_id, chat_json)
+                    else:
+                        await manager.broadcast_state_and_tree(t_id)
 
                 elif event_type == "error":
                     await websocket.send_text(ErrorOutbound(content=str(payload)).model_dump_json())
@@ -397,6 +434,7 @@ async def websocket_endpoint(websocket: WebSocket):
             # ── save_config ───────────────────────────────────────────────────
             elif ev_type == "save_config":
                 cfg = event.data
+                set_active_config(cfg)
                 old_db_url = os.environ.get("DATABASE_URL", "").strip()
                 save_config(cfg)
                 apply_config_to_env(cfg)
@@ -473,15 +511,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         manager.rebind_session(websocket, old_tid, target_id)
 
                         # Propagate session switch to secondary/detached windows
-                        switched_event = json.dumps({"type": "session_switched", "session_id": target_id})
-                        for ws, s in list(manager.socket_sessions.items()):
-                            if ws != websocket and manager.socket_roles.get(ws) == "secondary" and s.thread_id == old_tid:
-                                manager.rebind_session(ws, old_tid, target_id)
-                                s.thread_id = target_id
-                                try:
-                                    await ws.send_text(switched_event)
-                                except Exception:
-                                    pass
+                        await manager.propagate_session_switch(old_tid, target_id, websocket)
 
                         await websocket.send_text(StatusOutbound(content=f"Resumed session ({session.thread_id}).").model_dump_json())
                         await manager.broadcast_state_and_tree(session.thread_id)
@@ -549,15 +579,7 @@ async def websocket_endpoint(websocket: WebSocket):
                 session_manager.set_active_checkpoint(new_tid, "node_root")
 
                 # Propagate session switch to secondary/detached windows
-                switched_event = json.dumps({"type": "session_switched", "session_id": new_tid})
-                for ws, s in list(manager.socket_sessions.items()):
-                    if ws != websocket and manager.socket_roles.get(ws) == "secondary" and s.thread_id == old_tid:
-                        manager.rebind_session(ws, old_tid, new_tid)
-                        s.thread_id = new_tid
-                        try:
-                            await ws.send_text(switched_event)
-                        except Exception:
-                            pass
+                await manager.propagate_session_switch(old_tid, new_tid, websocket)
 
                 await websocket.send_text(StatusOutbound(content="Started a new session.").model_dump_json())
                 await manager.broadcast_state_and_tree(new_tid)
@@ -612,10 +634,7 @@ async def websocket_endpoint(websocket: WebSocket):
                         active_msgs = turns[0].values.get("messages", [])
 
                     before = count_tokens(active_msgs)
-                    loop = asyncio.get_event_loop()
-                    compressed_msgs = await loop.run_in_executor(
-                        None,
-                        summarise_history,
+                    compressed_msgs = await summarise_history(
                         active_msgs,
                         session.attached_files
                     )
@@ -681,6 +700,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "is_streaming": True,
                     "skip_topic_gate": True
                 }
+                set_active_config(load_config())
                 session.stop_event = threading.Event()
                 session.generation_task = asyncio.create_task(
                     _execute_generation(delta_state, session.thread_id, target_cid)
@@ -701,6 +721,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     await websocket.send_text(ErrorOutbound(content="API_KEY is not set. Open Settings and add your key.").model_dump_json())
                     await websocket.send_text(DoneOutbound().model_dump_json())
                     continue
+                set_active_config(cfg)
 
                 thread_id = session.thread_id
                 active_cid = session_manager.get_active_checkpoint(thread_id)

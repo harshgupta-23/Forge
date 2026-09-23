@@ -67,6 +67,12 @@ async def lifespan(app: FastAPI):
     print("[server] Forge FastAPI backend shutting down...")
     await checkpoint_manager.close()
     await vs.close()
+    await metadata_store.close()
+    try:
+        from tools.browser_action import close_browser
+        close_browser()
+    except Exception as e:
+        print(f"[server] Browser shutdown notice: {e}")
 
 
 def create_app() -> FastAPI:
