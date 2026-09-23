@@ -46,6 +46,17 @@ def test_pydantic_inbound_events():
     assert e4.type == "attach_file"
     assert e4.name == "doc.pdf"
 
+    # 5. rename_session event
+    e5 = adapter.validate_json('{"type": "rename_session", "data": {"session_id": "sess_1", "label": "test label"}}')
+    assert e5.type == "rename_session"
+    assert e5.data.session_id == "sess_1"
+    assert e5.data.label == "test label"
+
+    # 6. delete_session event
+    e6 = adapter.validate_json('{"type": "delete_session", "data": {"session_id": "sess_1"}}')
+    assert e6.type == "delete_session"
+    assert e6.data.session_id == "sess_1"
+
     print("✓ test_pydantic_inbound_events passed")
 
 

@@ -127,7 +127,7 @@ class ConnectionManager:
         snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": thread_id}})]
         meta_map = await metadata_store.get_metadata_map(thread_id)
 
-        tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, meta_map)
+        tree_dict = checkpoints_to_tree_data(thread_id, snapshots, active_cid, meta_map, allow_root_active=True)
         effective_active = tree_dict.get("active_node_id", "node_root")
         session_manager.set_active_checkpoint(thread_id, effective_active)
         session_manager.tree_cache[thread_id] = tree_dict
@@ -298,9 +298,18 @@ async def websocket_endpoint(websocket: WebSocket):
                         tokens = count_tokens(active_msgs)
 
                         # Compute turn-level breakdown between latest turn and its parent turn
-                        parent_turn = next((s for s in snapshots[1:] if not s.next), None)
-                        parent_msgs = parent_turn.values.get("messages", []) if parent_turn else []
-                        parent_cid = parent_turn.config.get("configurable", {}).get("checkpoint_id") if parent_turn else None
+                        if c_id == "node_root":
+                            parent_turn = None
+                            parent_cid = "node_root"
+                            parent_msgs = []
+                        elif c_id:
+                            parent_turn = next((s for s in snapshots if s.config.get("configurable", {}).get("checkpoint_id") == c_id), None)
+                            parent_cid = c_id
+                            parent_msgs = parent_turn.values.get("messages", []) if parent_turn else []
+                        else:
+                            parent_turn = next((s for s in snapshots[1:] if not s.next), None)
+                            parent_msgs = parent_turn.values.get("messages", []) if parent_turn else []
+                            parent_cid = parent_turn.config.get("configurable", {}).get("checkpoint_id") if parent_turn else None
 
                         u_msg, a_msg, t_calls, t_results, inter_serialized = _extract_turn_messages(active_msgs, parent_msgs)
                         u_tok = u_msg.get("tokens", 0) if u_msg else 0
@@ -522,6 +531,45 @@ async def websocket_endpoint(websocket: WebSocket):
                         await manager.broadcast_state_and_tree(session.thread_id)
                     except Exception as exc:
                         await websocket.send_text(ErrorOutbound(content=f"Could not load session: {exc}").model_dump_json())
+
+            # ── rename_session ───────────────────────────────────────────────
+            elif ev_type == "rename_session":
+                data = getattr(event, "data", None)
+                target_id = getattr(data, "session_id", None) or (data.get("session_id") if isinstance(data, dict) else None)
+                label = getattr(data, "label", "") or (data.get("label", "") if isinstance(data, dict) else "")
+                if target_id:
+                    await session_manager.rename_session(target_id, label)
+                    db_sessions = await session_manager.list_sessions(get_compiled_graph())
+                    await websocket.send_text(SessionListOutbound(sessions=db_sessions).model_dump_json())
+                    await websocket.send_text(StatusOutbound(content=f"Session renamed to '{label}'").model_dump_json())
+
+            # ── delete_session ───────────────────────────────────────────────
+            elif ev_type == "delete_session":
+                data = getattr(event, "data", None)
+                target_id = getattr(data, "session_id", None) or (data.get("session_id") if isinstance(data, dict) else None)
+                if target_id:
+                    from rag.vector_store import get_vector_store
+                    await session_manager.delete_session(target_id)
+                    try:
+                        await get_vector_store().delete_session_chunks(target_id)
+                    except Exception:
+                        pass
+
+                    if session.thread_id == target_id:
+                        import uuid
+                        from datetime import datetime, timezone
+                        old_tid = session.thread_id
+                        new_tid = f"sess_{datetime.now(timezone.utc).strftime('%Y-%m-%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+                        session.thread_id = new_tid
+                        session.pending_branch_query = None
+                        manager.rebind_session(websocket, old_tid, new_tid)
+                        session_manager.set_active_checkpoint(new_tid, "node_root")
+                        await manager.propagate_session_switch(old_tid, new_tid, websocket)
+                        await manager.broadcast_state_and_tree(new_tid)
+
+                    db_sessions = await session_manager.list_sessions(get_compiled_graph())
+                    await websocket.send_text(SessionListOutbound(sessions=db_sessions).model_dump_json())
+                    await websocket.send_text(StatusOutbound(content="Session deleted.").model_dump_json())
 
             # ── get_token_usage ──────────────────────────────────────────────
             elif ev_type == "get_token_usage":

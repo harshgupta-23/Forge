@@ -102,7 +102,7 @@ async def stream_graph_execution(
         configurable["thread_id"] = thread_id
 
     # If branching from a historical turn, point to that parent checkpoint
-    if checkpoint_id and checkpoint_id != "node_root":
+    if checkpoint_id:
         configurable["checkpoint_id"] = checkpoint_id
 
     # Observability & LangSmith Tracing integration

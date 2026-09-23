@@ -94,6 +94,27 @@ class BranchDecisionEvent(BaseInboundEvent):
     decision: Literal["branch", "continue"]
 
 
+class RenameSessionData(BaseModel):
+    model_config = {"extra": "ignore"}
+    session_id: str
+    label: str = ""
+
+
+class RenameSessionEvent(BaseInboundEvent):
+    type: Literal["rename_session"]
+    data: RenameSessionData
+
+
+class DeleteSessionData(BaseModel):
+    model_config = {"extra": "ignore"}
+    session_id: str
+
+
+class DeleteSessionEvent(BaseInboundEvent):
+    type: Literal["delete_session"]
+    data: DeleteSessionData
+
+
 # Discriminated union for incoming WebSocket frames
 InboundEvent = Annotated[
     Union[
@@ -113,6 +134,8 @@ InboundEvent = Annotated[
         GetTokenUsageEvent,
         ShutdownEvent,
         BranchDecisionEvent,
+        RenameSessionEvent,
+        DeleteSessionEvent,
     ],
     Field(discriminator="type")
 ]

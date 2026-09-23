@@ -75,7 +75,8 @@ def checkpoints_to_tree_data(
     thread_id: str,
     snapshots: list[Any],
     active_checkpoint_id: Optional[str] = None,
-    labels: Optional[dict[str, str]] = None
+    labels: Optional[dict[str, str]] = None,
+    allow_root_active: bool = False,
 ) -> dict[str, Any]:
     """
     Transforms LangGraph StateSnapshot history into the frontend tree graph format:
@@ -197,7 +198,7 @@ def checkpoints_to_tree_data(
 
     # Determine effective active node: default to latest turn if unset or pointing to empty root
     effective_active = active_checkpoint_id
-    if not effective_active or effective_active == root_id or effective_active not in nodes:
+    if not effective_active or (not allow_root_active and effective_active == root_id) or effective_active not in nodes:
         if turn_snapshots:
             latest_cid = turn_snapshots[-1].config.get("configurable", {}).get("checkpoint_id")
             effective_active = latest_cid if latest_cid in nodes else root_id

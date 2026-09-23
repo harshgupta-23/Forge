@@ -25,6 +25,35 @@ except Exception:
 LOCAL_DB_PATH = AGENT_HOME / "forge_checkpoints.db"
 
 
+def _row_to_chunk(row, score_key="vector_distance", score_val=None):
+    """Parse a DB row (id, session_id, file_path, filename, chunk_index, content, metadata, score) into a chunk dict."""
+    return {
+        "id": row[0], "session_id": row[1], "file_path": row[2], "filename": row[3],
+        "chunk_index": row[4], "content": row[5],
+        "metadata": row[6] if isinstance(row[6], dict) else json.loads(row[6] or "{}"),
+        score_key: score_val if score_val is not None else (float(row[7]) if row[7] is not None else None),
+    }
+
+
+def _apply_rrf(vec_items, fts_items, top_k):
+    """Reciprocal Rank Fusion over two ranked lists of (chunk_id, chunk_dict) pairs."""
+    # ponytail: shared RRF replaces two ~20-line duplicated loops
+    rrf_scores: dict[str, float] = {}
+    chunk_data: dict[str, dict[str, Any]] = {}
+    for rank, (cid, chunk) in enumerate(vec_items):
+        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (60.0 + rank + 1)
+        chunk_data.setdefault(cid, chunk)
+    for rank, (cid, chunk) in enumerate(fts_items):
+        rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (60.0 + rank + 1)
+        chunk_data.setdefault(cid, chunk)
+    ranked = []
+    for cid, score in sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True):
+        item = chunk_data[cid]
+        item["rrf_score"] = score
+        ranked.append(item)
+    return ranked[:top_k]
+
+
 class VectorStore:
     """
     Manages document chunk storage, HNSW/vector similarity,
@@ -266,48 +295,9 @@ class VectorStore:
                 """, (query, limit) if not session_id else (session_id, query, limit))
                 fts_rows = await cur.fetchall()
 
-        # Reciprocal Rank Fusion (RRF)
-        rrf_scores: dict[str, float] = {}
-        chunk_data: dict[str, dict[str, Any]] = {}
-
-        for rank, row in enumerate(vec_rows):
-            cid = row[0]
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (1.0 / (60.0 + rank + 1))
-            if cid not in chunk_data:
-                chunk_data[cid] = {
-                    "id": row[0],
-                    "session_id": row[1],
-                    "file_path": row[2],
-                    "filename": row[3],
-                    "chunk_index": row[4],
-                    "content": row[5],
-                    "metadata": row[6] if isinstance(row[6], dict) else json.loads(row[6] or "{}"),
-                    "vector_distance": float(row[7]),
-                }
-
-        for rank, row in enumerate(fts_rows):
-            cid = row[0]
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (1.0 / (60.0 + rank + 1))
-            if cid not in chunk_data:
-                chunk_data[cid] = {
-                    "id": row[0],
-                    "session_id": row[1],
-                    "file_path": row[2],
-                    "filename": row[3],
-                    "chunk_index": row[4],
-                    "content": row[5],
-                    "metadata": row[6] if isinstance(row[6], dict) else json.loads(row[6] or "{}"),
-                    "vector_distance": None,
-                }
-
-        # Sort by RRF score descending
-        ranked = []
-        for cid, score in sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True):
-            item = chunk_data[cid]
-            item["rrf_score"] = score
-            ranked.append(item)
-
-        return ranked[:top_k]
+        vec_items = [(row[0], _row_to_chunk(row, "vector_distance")) for row in vec_rows]
+        fts_items = [(row[0], _row_to_chunk(row, "vector_distance", None)) for row in fts_rows]
+        return _apply_rrf(vec_items, fts_items, top_k)
 
     async def _hybrid_search_sqlite(
         self,
@@ -388,45 +378,14 @@ class VectorStore:
 
         scored_fts.sort(key=lambda x: x[1], reverse=True)
 
-        # RRF combination
-        rrf_scores: dict[str, float] = {}
-        chunk_data: dict[str, dict[str, Any]] = {}
+        def _sqlite_chunk(r, sim=None):
+            return {"id": r[0], "session_id": r[1], "file_path": r[2], "filename": r[3],
+                    "chunk_index": r[4], "content": r[5], "vector_similarity": sim,
+                    "metadata": json.loads(r[7] or "{}")}
 
-        for rank, (cid, sim, r) in enumerate(scored_vec[:limit]):
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (1.0 / (60.0 + rank + 1))
-            chunk_data[cid] = {
-                "id": r[0],
-                "session_id": r[1],
-                "file_path": r[2],
-                "filename": r[3],
-                "chunk_index": r[4],
-                "content": r[5],
-                "vector_similarity": sim,
-                "metadata": json.loads(r[7] or "{}"),
-            }
-
-        for rank, (cid, overlap, r) in enumerate(scored_fts[:limit]):
-            if overlap > 0:
-                rrf_scores[cid] = rrf_scores.get(cid, 0.0) + (1.0 / (60.0 + rank + 1))
-                if cid not in chunk_data:
-                    chunk_data[cid] = {
-                        "id": r[0],
-                        "session_id": r[1],
-                        "file_path": r[2],
-                        "filename": r[3],
-                        "chunk_index": r[4],
-                        "content": r[5],
-                        "vector_similarity": None,
-                        "metadata": json.loads(r[7] or "{}"),
-                    }
-
-        ranked = []
-        for cid, score in sorted(rrf_scores.items(), key=lambda item: item[1], reverse=True):
-            item = chunk_data[cid]
-            item["rrf_score"] = score
-            ranked.append(item)
-
-        return ranked[:top_k]
+        vec_items = [(cid, _sqlite_chunk(r, sim)) for cid, sim, r in scored_vec[:limit]]
+        fts_items = [(cid, _sqlite_chunk(r)) for cid, overlap, r in scored_fts[:limit] if overlap > 0]
+        return _apply_rrf(vec_items, fts_items, top_k)
 
     async def delete_session_chunks(self, session_id: str) -> None:
         """Deletes all chunks associated with a specific session."""
