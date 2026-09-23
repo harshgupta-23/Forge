@@ -112,8 +112,8 @@ class ConnectionManager:
         """Notifies secondary/detached windows when the active session is switched."""
         switched_event = json.dumps({"type": "session_switched", "session_id": new_tid})
         for ws, s in list(self.socket_sessions.items()):
-            if ws != source_ws and self.socket_roles.get(ws) == "secondary" and s.thread_id == old_tid:
-                self.rebind_session(ws, old_tid, new_tid)
+            if ws != source_ws and self.socket_roles.get(ws) == "secondary":
+                self.rebind_session(ws, s.thread_id, new_tid)
                 s.thread_id = new_tid
                 try:
                     await ws.send_text(switched_event)
@@ -298,13 +298,9 @@ async def websocket_endpoint(websocket: WebSocket):
                         tokens = count_tokens(active_msgs)
 
                         # Compute turn-level breakdown between latest turn and its parent turn
-                        parent_cid = snapshots[0].parent_config.get("configurable", {}).get("checkpoint_id") if snapshots[0].parent_config else None
-                        parent_msgs = []
-                        if parent_cid:
-                            for s in snapshots[1:]:
-                                if s.config.get("configurable", {}).get("checkpoint_id") == parent_cid:
-                                    parent_msgs = s.values.get("messages", [])
-                                    break
+                        parent_turn = next((s for s in snapshots[1:] if not s.next), None)
+                        parent_msgs = parent_turn.values.get("messages", []) if parent_turn else []
+                        parent_cid = parent_turn.config.get("configurable", {}).get("checkpoint_id") if parent_turn else None
 
                         u_msg, a_msg, t_calls, t_results, inter_serialized = _extract_turn_messages(active_msgs, parent_msgs)
                         u_tok = u_msg.get("tokens", 0) if u_msg else 0
@@ -329,7 +325,8 @@ async def websocket_endpoint(websocket: WebSocket):
 
                         # Record turn in forge_session_summaries for O(1) session listing
                         preview = (u_msg.get("content", "") if u_msg else "")[:60]
-                        await session_manager.record_turn(t_id, preview, node_count_increment=1)
+                        exact_node_count = len([s for s in snapshots if not s.next]) + 1
+                        await session_manager.record_turn(t_id, preview, node_count=exact_node_count)
 
                         # Run background dead-end detection on updated graph
                         await auto_prune_dead_ends(t_id, snapshots)
@@ -373,6 +370,14 @@ async def websocket_endpoint(websocket: WebSocket):
                             active_node_id=latest_turn_cid
                         ).model_dump_json()
                         await manager.broadcast_to_session(t_id, node_added_json)
+
+                        tree_json = TreeDataOutbound(
+                            session_id=t_id,
+                            root_id=tree_dict.get("root_id", "node_root"),
+                            active_node_id=latest_turn_cid,
+                            nodes=tree_dict.get("nodes", {})
+                        ).model_dump_json()
+                        await manager.broadcast_to_session(t_id, tree_json)
 
                         serialized_path = [serialize_message(m) for m in active_msgs if serialize_message(m) is not None]
                         chat_json = ChatHistoryOutbound(
@@ -736,14 +741,13 @@ async def websocket_endpoint(websocket: WebSocket):
                             active_msgs = s.values.get("messages", [])
                             break
 
-                # Robust fallback to latest completed turn if active_cid was unset or pointing to root
+                # Robust fallback to latest completed turn if active_cid was unset
                 if not active_msgs and snapshots:
                     turns = [s for s in snapshots if not s.next]
-                    if turns:
+                    if turns and not active_cid:
                         active_msgs = turns[0].values.get("messages", [])
-                        if not active_cid or active_cid == "node_root":
-                            active_cid = turns[0].config.get("configurable", {}).get("checkpoint_id")
-                            session_manager.set_active_checkpoint(thread_id, active_cid)
+                        active_cid = turns[0].config.get("configurable", {}).get("checkpoint_id")
+                        session_manager.set_active_checkpoint(thread_id, active_cid)
 
                 # If prior conversation exists (at least one user message and agent response)
                 if active_msgs and len(active_msgs) >= 2:

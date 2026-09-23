@@ -391,8 +391,14 @@ function renderTreeView(nodes, rootId, activeNodeId) {
 
     card.appendChild(actions);
 
-    card.addEventListener('click', () => {
-      if (nodeId !== activeNodeId && socket && socket.readyState === WebSocket.OPEN) {
+    card.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (nodeId !== currentActiveNodeId && socket && socket.readyState === WebSocket.OPEN) {
+        currentActiveNodeId = nodeId;
+        document.querySelectorAll('#tree-container .tree-node-card').forEach(c => {
+          c.classList.remove('active-tip');
+        });
+        card.classList.add('active-tip');
         socket.send(JSON.stringify({
           type: "set_active",
           content: nodeId
@@ -481,12 +487,30 @@ function connectWebSocket() {
           localStorage.setItem('forge_active_session_id', msg.session_id);
         }
         renderTreeView(msg.nodes || {}, msg.root_id, msg.active_node_id);
+      } else if (msg.type === 'node_added') {
+        if (!currentNodes) currentNodes = {};
+        if (msg.node && msg.node.id) {
+          currentNodes[msg.node.id] = msg.node;
+          const parentId = msg.node.parent_id;
+          if (parentId && currentNodes[parentId]) {
+            if (!currentNodes[parentId].children_ids) {
+              currentNodes[parentId].children_ids = [];
+            }
+            if (!currentNodes[parentId].children_ids.includes(msg.node.id)) {
+              currentNodes[parentId].children_ids.push(msg.node.id);
+            }
+          }
+        }
+        renderTreeView(currentNodes, currentRootId || "node_root", msg.active_node_id || msg.node?.id);
       } else if (msg.type === 'session_switched') {
         if (msg.session_id) {
           currentSessionId = msg.session_id;
           sessionBadge.textContent = msg.session_id;
           sessionBadge.title = `Active Session: ${msg.session_id}`;
           localStorage.setItem('forge_active_session_id', msg.session_id);
+          if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'get_config' }));
+          }
         }
       }
     } catch (err) {

@@ -53,6 +53,10 @@ async def lifespan(app: FastAPI):
     graph_with_cp = build_graph(checkpointer=checkpointer)
     set_compiled_graph(graph_with_cp)
 
+    # Reconcile any unindexed or legacy sessions into forge_session_summaries
+    from storage.session_manager import session_manager
+    await session_manager.sync_missing_summaries(graph_with_cp)
+
     # Synchronize LangSmith tracing environment
     try:
         from observability.tracer import sync_tracing_env

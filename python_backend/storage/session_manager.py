@@ -220,25 +220,38 @@ class SessionManager:
         thread_id: str,
         preview: str = "",
         node_count_increment: int = 1,
-        label: Optional[str] = None
+        label: Optional[str] = None,
+        node_count: Optional[int] = None,
     ) -> None:
         """
         Upserts session metadata into forge_session_summaries table for fast O(1) listing.
         """
         now = datetime.now(timezone.utc).isoformat()
+        initial_node_count = node_count if node_count is not None else node_count_increment
         if checkpoint_manager.backend_type == "postgres" and checkpoint_manager.pool:
             try:
                 async with checkpoint_manager.pool.connection() as conn:
                     async with conn.cursor() as cur:
-                        await cur.execute("""
-                            INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
-                            VALUES (%s, %s, %s, %s, %s, %s)
-                            ON CONFLICT (thread_id) DO UPDATE SET
-                                updated_at = EXCLUDED.updated_at,
-                                node_count = forge_session_summaries.node_count + EXCLUDED.node_count,
-                                preview = CASE WHEN EXCLUDED.preview <> '' THEN EXCLUDED.preview ELSE forge_session_summaries.preview END,
-                                label = COALESCE(EXCLUDED.label, forge_session_summaries.label);
-                        """, (thread_id, now, now, node_count_increment, preview, label))
+                        if node_count is not None:
+                            await cur.execute("""
+                                INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (thread_id) DO UPDATE SET
+                                    updated_at = EXCLUDED.updated_at,
+                                    node_count = %s,
+                                    preview = CASE WHEN forge_session_summaries.preview IS NOT NULL AND forge_session_summaries.preview <> '' THEN forge_session_summaries.preview ELSE EXCLUDED.preview END,
+                                    label = COALESCE(EXCLUDED.label, forge_session_summaries.label);
+                            """, (thread_id, now, now, initial_node_count, preview, label, node_count))
+                        else:
+                            await cur.execute("""
+                                INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
+                                VALUES (%s, %s, %s, %s, %s, %s)
+                                ON CONFLICT (thread_id) DO UPDATE SET
+                                    updated_at = EXCLUDED.updated_at,
+                                    node_count = forge_session_summaries.node_count + EXCLUDED.node_count,
+                                    preview = CASE WHEN forge_session_summaries.preview IS NOT NULL AND forge_session_summaries.preview <> '' THEN forge_session_summaries.preview ELSE EXCLUDED.preview END,
+                                    label = COALESCE(EXCLUDED.label, forge_session_summaries.label);
+                            """, (thread_id, now, now, node_count_increment, preview, label))
             except Exception as exc:
                 print(f"[session_manager] Failed to record turn in PostgreSQL: {exc}")
         else:
@@ -246,18 +259,83 @@ class SessionManager:
             if db_path and db_path.exists():
                 try:
                     async with aiosqlite.connect(str(db_path)) as db:
-                        await db.execute("""
-                            INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
-                            VALUES (?, ?, ?, ?, ?, ?)
-                            ON CONFLICT (thread_id) DO UPDATE SET
-                                updated_at = excluded.updated_at,
-                                node_count = forge_session_summaries.node_count + excluded.node_count,
-                                preview = CASE WHEN excluded.preview <> '' THEN excluded.preview ELSE forge_session_summaries.preview END,
-                                label = COALESCE(excluded.label, forge_session_summaries.label);
-                        """, (thread_id, now, now, node_count_increment, preview, label))
+                        if node_count is not None:
+                            await db.execute("""
+                                INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                                ON CONFLICT (thread_id) DO UPDATE SET
+                                    updated_at = excluded.updated_at,
+                                    node_count = ?,
+                                    preview = CASE WHEN forge_session_summaries.preview IS NOT NULL AND forge_session_summaries.preview <> '' THEN forge_session_summaries.preview ELSE excluded.preview END,
+                                    label = COALESCE(excluded.label, forge_session_summaries.label);
+                            """, (thread_id, now, now, initial_node_count, preview, label, node_count))
+                        else:
+                            await db.execute("""
+                                INSERT INTO forge_session_summaries (thread_id, created_at, updated_at, node_count, preview, label)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                                ON CONFLICT (thread_id) DO UPDATE SET
+                                    updated_at = excluded.updated_at,
+                                    node_count = forge_session_summaries.node_count + excluded.node_count,
+                                    preview = CASE WHEN forge_session_summaries.preview IS NOT NULL AND forge_session_summaries.preview <> '' THEN forge_session_summaries.preview ELSE excluded.preview END,
+                                    label = COALESCE(excluded.label, forge_session_summaries.label);
+                            """, (thread_id, now, now, node_count_increment, preview, label))
                         await db.commit()
                 except Exception as exc:
                     print(f"[session_manager] Failed to record turn in SQLite: {exc}")
+
+    async def sync_missing_summaries(self, graph: Any) -> None:
+        """
+        Backfills forge_session_summaries for any stored checkpoint threads that lack
+        a summary or have an empty preview. Runs in O(missing) time on startup.
+        """
+        if not graph:
+            return
+        missing_threads: set[str] = set()
+        if checkpoint_manager.backend_type == "postgres" and checkpoint_manager.pool:
+            try:
+                async with checkpoint_manager.pool.connection() as conn:
+                    async with conn.cursor() as cur:
+                        await cur.execute("""
+                            SELECT DISTINCT c.thread_id 
+                            FROM checkpoints c 
+                            LEFT JOIN forge_session_summaries s ON c.thread_id = s.thread_id 
+                            WHERE s.thread_id IS NULL OR s.preview IS NULL OR s.preview = '';
+                        """)
+                        rows = await cur.fetchall()
+                        missing_threads = {r[0] for r in rows if r[0]}
+            except Exception:
+                pass
+        else:
+            db_path = getattr(checkpointer, "SQLITE_DB_PATH", None)
+            if db_path and db_path.exists():
+                try:
+                    async with aiosqlite.connect(str(db_path)) as db:
+                        async with db.execute("""
+                            SELECT DISTINCT c.thread_id 
+                            FROM checkpoints c 
+                            LEFT JOIN forge_session_summaries s ON c.thread_id = s.thread_id 
+                            WHERE s.thread_id IS NULL OR s.preview IS NULL OR s.preview = '';
+                        """) as cur:
+                            rows = await cur.fetchall()
+                            missing_threads = {r[0] for r in rows if r[0]}
+                except Exception:
+                    pass
+
+        for tid in missing_threads:
+            try:
+                snapshots = [s async for s in graph.aget_state_history({"configurable": {"thread_id": tid}})]
+                turns = [s for s in snapshots if not s.next]
+                if not turns:
+                    continue
+                first_turn_msgs = turns[-1].values.get("messages", [])
+                preview = ""
+                for m in first_turn_msgs:
+                    if isinstance(m, HumanMessage) or getattr(m, "type", None) == "human":
+                        preview = str(getattr(m, "content", ""))[:60]
+                        break
+                await self.record_turn(tid, preview=preview, node_count=len(turns) + 1)
+            except Exception:
+                continue
 
     async def list_sessions(self, graph: Any = None) -> list[dict[str, Any]]:
         """

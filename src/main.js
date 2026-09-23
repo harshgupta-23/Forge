@@ -44,6 +44,13 @@ const sessionListContainer = document.getElementById('session-list-container');
 const btnStop = document.getElementById('btn-stop');
 const tokens5hEl  = document.getElementById('tokens-5h');
 const tokens24hEl = document.getElementById('tokens-24h');
+const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+const appSidebar = document.getElementById('app-sidebar');
+const dragDropOverlay = document.getElementById('drag-drop-overlay');
+const btnAttachFile = document.getElementById('btn-attach-file');
+const attachedChipsTray = document.getElementById('attached-chips-tray');
+const unifiedConsole = document.getElementById('unified-console');
+const activeBranchLabel = document.getElementById('active-branch-label');
 
 async function openDetachedTreeWindow() {
   const activeSessionId = localStorage.getItem('forge_active_session_id') || '';
@@ -295,11 +302,18 @@ function renderChatHistory(pathMessages) {
   });
   
   logsDiv.scrollTop = logsDiv.scrollHeight;
+  const terminalChat = document.getElementById('terminal-chat');
+  if (terminalChat) terminalChat.scrollTop = terminalChat.scrollHeight;
 }
 
 function renderTreeView(nodes, rootId, activeNodeId) {
   latestTreeNodes = nodes || {};
   latestActiveNodeId = activeNodeId || "node_root";
+
+  if (activeBranchLabel) {
+    const nodeLabel = latestTreeNodes[latestActiveNodeId]?.label || latestActiveNodeId;
+    activeBranchLabel.textContent = latestActiveNodeId === "node_root" ? "main" : (nodeLabel.length > 20 ? nodeLabel.slice(0, 18) + '…' : nodeLabel);
+  }
 
   if (btnBranchPrev) {
     const canBranch = Boolean(latestActiveNodeId && latestActiveNodeId !== "node_root" && latestTreeNodes[latestActiveNodeId]?.parent_id);
@@ -474,12 +488,34 @@ function renderTreeView(nodes, rootId, activeNodeId) {
 
     card.appendChild(actions);
     
-    card.addEventListener('click', () => {
-      if (nodeId !== activeNodeId) {
-        socket.send(JSON.stringify({
-          type: "set_active",
-          content: nodeId
-        }));
+    card.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (nodeId !== latestActiveNodeId) {
+        latestActiveNodeId = nodeId;
+        // Optimistically update card styling
+        document.querySelectorAll('#tree-container .tree-node-card').forEach(c => {
+          c.classList.remove('active-tip');
+        });
+        card.classList.add('active-tip');
+
+        // Update active branch badge in header
+        if (activeBranchLabel) {
+          const nodeLabel = latestTreeNodes[nodeId]?.label || nodeId;
+          activeBranchLabel.textContent = nodeId === "node_root" ? "main" : (nodeLabel.length > 20 ? nodeLabel.slice(0, 18) + '…' : nodeLabel);
+        }
+
+        if (btnBranchPrev) {
+          const canBranch = Boolean(nodeId && nodeId !== "node_root" && latestTreeNodes[nodeId]?.parent_id);
+          btnBranchPrev.disabled = !canBranch;
+          btnBranchPrev.style.opacity = canBranch ? '1' : '0.45';
+        }
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({
+            type: "set_active",
+            content: nodeId
+          }));
+        }
       }
     });
     
@@ -590,10 +626,18 @@ function renderSessionList(sessions) {
       </div>
     `;
 
+    const activeStoredId = localStorage.getItem('forge_active_session_id');
+    if (activeStoredId && s.session_id === activeStoredId) {
+      item.classList.add('active-session');
+    }
+
     // Click handler for the card itself (loads the session)
     item.addEventListener('click', () => {
+      document.querySelectorAll('#session-list-container .tree-node-card').forEach(c => c.classList.remove('active-session'));
+      item.classList.add('active-session');
+      localStorage.setItem('forge_active_session_id', s.session_id);
       socket.send(JSON.stringify({ type: 'load_session', data: { session_id: s.session_id } }));
-      sessionPickerPanel.classList.add('hidden');
+      if (sessionPickerPanel) sessionPickerPanel.classList.add('hidden');
     });
 
     // Event listener for Rename button (stops propagation so it doesn't trigger card click)
@@ -662,6 +706,13 @@ btnTreeView.addEventListener('click', () => {
   treeViewPanel.classList.toggle('hidden');
   settingsPanel.classList.add('hidden');
   if (!treeViewPanel.classList.contains('hidden')) {
+    // Request fresh tree data from backend
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(jsonStringifyEvent("get_config"));
+    }
+    if (latestTreeNodes && Object.keys(latestTreeNodes).length > 0) {
+      renderTreeView(latestTreeNodes, "node_root", latestActiveNodeId);
+    }
     // Reset zoom and center view slightly on open
     panX = 40;
     panY = 40;
@@ -687,21 +738,22 @@ closeSettings.addEventListener('click', () => {
 });
 
 btnFetchSession.addEventListener('click', () => {
-  sessionPickerPanel.classList.toggle('hidden');
-  settingsPanel.classList.add('hidden');
-  treeViewPanel.classList.add('hidden');
-  if (!sessionPickerPanel.classList.contains('hidden')) {
-    socket.send(JSON.stringify({ type: 'list_sessions' }));
+  socket.send(JSON.stringify({ type: 'list_sessions' }));
+  if (sessionPickerPanel && !sessionPickerPanel.classList.contains('hidden')) {
+    sessionPickerPanel.classList.add('hidden');
   }
 });
 
-closeSessionPicker.addEventListener('click', () => {
-  sessionPickerPanel.classList.add('hidden');
-});
+if (closeSessionPicker) {
+  closeSessionPicker.addEventListener('click', () => {
+    if (sessionPickerPanel) sessionPickerPanel.classList.add('hidden');
+  });
+}
 
 socket.onopen = () => {
   socket.send(jsonStringifyEvent("get_config"));
   socket.send(JSON.stringify({ type: 'get_token_usage' }));
+  socket.send(JSON.stringify({ type: 'list_sessions' }));
 };
 
 socket.onmessage = (event) => {
@@ -770,6 +822,22 @@ socket.onmessage = (event) => {
     }
     renderTreeView(msg.nodes, msg.root_id, msg.active_node_id);
   }
+  else if (msg.type === "node_added") {
+    if (!latestTreeNodes) latestTreeNodes = {};
+    if (msg.node && msg.node.id) {
+      latestTreeNodes[msg.node.id] = msg.node;
+      const parentId = msg.node.parent_id;
+      if (parentId && latestTreeNodes[parentId]) {
+        if (!latestTreeNodes[parentId].children_ids) {
+          latestTreeNodes[parentId].children_ids = [];
+        }
+        if (!latestTreeNodes[parentId].children_ids.includes(msg.node.id)) {
+          latestTreeNodes[parentId].children_ids.push(msg.node.id);
+        }
+      }
+    }
+    renderTreeView(latestTreeNodes, "node_root", msg.active_node_id || msg.node?.id);
+  }
   else if (msg.type === "session_switched") {
     if (msg.session_id) {
       localStorage.setItem('forge_active_session_id', msg.session_id);
@@ -814,8 +882,9 @@ socket.onmessage = (event) => {
   }
   else if (msg.type === "done") {
     finaliseAgentBubble();
-    btnStop.classList.add('hidden');
+    setGenerating(false);
     statusBar.textContent = '';
+    socket.send(JSON.stringify({ type: 'list_sessions' }));
   }
   else if (msg.type === "token_count") {
     sessionTotalTokens = msg.content;
@@ -835,14 +904,14 @@ socket.onmessage = (event) => {
     }
   }
   else if (msg.type === "branch_prompt") {
-    btnStop.classList.add('hidden');
+    setGenerating(false);
     statusBar.textContent = 'Topic shift detected. Please choose how to proceed.';
     renderBranchPrompt(msg.topic, msg.reason, msg.user_text);
   }
   else if (msg.type === "error") {
     finaliseAgentBubble();
     appendOutputMessage(`${ICONS.ALERT} ${msg.content}`, 'error-response');
-    btnStop.classList.add('hidden');
+    setGenerating(false);
     statusBar.textContent = '';
   }
 };
@@ -1082,11 +1151,46 @@ document.getElementById('save-settings').addEventListener('click', () => {
   setTimeout(() => socket.send(jsonStringifyEvent("get_config")), 300);
 });
 
-// ── Send message ───────────────────────────────────────────────────────────────
+// ── Generation State Management ──────────────────────────────────────────────
+function setGenerating(isGenerating) {
+  if (isGenerating) {
+    btnStop.classList.remove('hidden');
+    sendBtn.classList.add('hidden');
+    if (unifiedConsole) unifiedConsole.classList.add('generating');
+  } else {
+    btnStop.classList.add('hidden');
+    sendBtn.classList.remove('hidden');
+    if (unifiedConsole) unifiedConsole.classList.remove('generating');
+  }
+}
+
+// ── Auto-Resizing Textarea & Input Handling ─────────────────────────────────
+function autoResizeUserInput() {
+  if (!userInput) return;
+  userInput.style.height = 'auto';
+  const newHeight = Math.min(userInput.scrollHeight, 180);
+  userInput.style.height = `${newHeight}px`;
+  
+  // Auto-scroll chat so messages are never masked behind expanding console
+  const chatCanvas = document.getElementById('terminal-chat');
+  if (chatCanvas) {
+    chatCanvas.scrollTop = chatCanvas.scrollHeight;
+  }
+}
+
+userInput.addEventListener('input', autoResizeUserInput);
+userInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    dispatchMessage();
+  }
+});
+
+// ── Send message ─────────────────────────────────────────────────────────────
 sendBtn.addEventListener('click', dispatchMessage);
-userInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') dispatchMessage(); });
 btnStop.addEventListener('click', () => {
   socket.send(JSON.stringify({ type: 'stop_generation' }));
+  setGenerating(false);
 });
 
 function dispatchMessage() {
@@ -1095,14 +1199,48 @@ function dispatchMessage() {
   const userToks = Math.max(1, Math.floor(txt.length / 4));
   appendOutputMessage(txt, 'user-query', 'You: ', userToks);
   socket.send(jsonStringifyEvent("user_message", txt));
-  btnStop.classList.remove('hidden');
+  setGenerating(true);
   userInput.value = "";
+  userInput.style.height = 'auto';
+
+  // Clear attached chips tray for fresh turn
+  if (attachedChipsTray) {
+    attachedChipsTray.innerHTML = '';
+  }
 }
 
-// ── File Attachment & Drag and Drop ─────────────────────────────────────────
-const dropZone = document.getElementById('drop-zone');
+// ── Sidebar Toggle Controls ──────────────────────────────────────────────────
+if (btnToggleSidebar && appSidebar) {
+  btnToggleSidebar.addEventListener('click', () => {
+    appSidebar.classList.toggle('collapsed');
+  });
+}
+
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+    e.preventDefault();
+    if (appSidebar) appSidebar.classList.toggle('collapsed');
+  }
+});
+
+// ── File Attachment & Inline Chips ───────────────────────────────────────────
 const filePickerInput = document.getElementById('file-picker-input');
 const recentlyAttached = new Set();
+
+function addAttachedChip(name, path) {
+  if (!attachedChipsTray) return;
+  const chip = document.createElement('span');
+  chip.className = 'attached-chip';
+  chip.innerHTML = `
+    <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+    <span>${escHtml(name)}</span>
+    <button type="button" class="attached-chip-remove" title="Remove attachment">×</button>
+  `;
+  chip.querySelector('.attached-chip-remove').addEventListener('click', () => {
+    chip.remove();
+  });
+  attachedChipsTray.appendChild(chip);
+}
 
 function attachFile(name, path) {
   if (!name || !path) return;
@@ -1117,6 +1255,19 @@ function attachFile(name, path) {
   }
   socket.send(JSON.stringify({ type: 'attach_file', name, path }));
   appendOutputMessage(`${ICONS.CLIP} Attaching: ${name}`, 'status-msg');
+  addAttachedChip(name, path);
+}
+
+if (btnAttachFile && filePickerInput) {
+  btnAttachFile.addEventListener('click', () => {
+    filePickerInput.click();
+  });
+  filePickerInput.addEventListener('change', () => {
+    if (filePickerInput.files && filePickerInput.files.length > 0) {
+      handleFiles(filePickerInput.files);
+      filePickerInput.value = '';
+    }
+  });
 }
 
 async function handleFiles(files) {
@@ -1159,68 +1310,67 @@ function readFileAsBase64(file) {
   });
 }
 
-// Click drop zone to browse files
-if (dropZone && filePickerInput) {
-  dropZone.addEventListener('click', () => {
-    filePickerInput.click();
-  });
-  filePickerInput.addEventListener('change', () => {
-    if (filePickerInput.files && filePickerInput.files.length > 0) {
-      handleFiles(filePickerInput.files);
-      filePickerInput.value = '';
-    }
-  });
+// ── Full-Window Frosted Drag and Drop Overlay ─────────────────────────────────
+let dragCounter = 0;
+
+function showDragOverlay() {
+  if (dragDropOverlay) dragDropOverlay.classList.remove('hidden');
 }
 
-// Standard HTML5 Drag and Drop listeners (browser & webview)
-['dragenter', 'dragover'].forEach(eventName => {
-  window.addEventListener(eventName, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (dropZone) dropZone.classList.add('drag-over');
-  }, false);
-});
+function hideDragOverlay() {
+  if (dragDropOverlay) dragDropOverlay.classList.add('hidden');
+}
 
-['dragleave', 'dragend'].forEach(eventName => {
-  window.addEventListener(eventName, (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight || e.target === document.documentElement) {
-      if (dropZone) dropZone.classList.remove('drag-over');
-    }
-  }, false);
-});
+// HTML5 Drag and Drop listeners with dragCounter & pointer-events:none on children
+window.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  dragCounter++;
+  showDragOverlay();
+}, false);
+
+window.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+}, false);
+
+window.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  dragCounter--;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    hideDragOverlay();
+  }
+}, false);
 
 window.addEventListener('drop', (e) => {
   e.preventDefault();
   e.stopPropagation();
-  if (dropZone) dropZone.classList.remove('drag-over');
+  dragCounter = 0;
+  hideDragOverlay();
   if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
     handleFiles(e.dataTransfer.files);
   }
 }, false);
 
-// Tauri Native File Drop (supports all Tauri v2 event dispatch mechanisms)
+// Tauri Native File Drop (supports Tauri v2 window events)
 function setupTauriFileDrop() {
-  if (!window.__TAURI__) {
-    console.log('Running outside Tauri — HTML5 file drop active.');
-    return;
-  }
+  if (!window.__TAURI__) return;
 
-  // 1. Direct Tauri event listener (most reliable in Tauri v2 across Linux / Windows)
   if (window.__TAURI__.event && typeof window.__TAURI__.event.listen === 'function') {
     try {
       window.__TAURI__.event.listen('tauri://drag-enter', () => {
-        if (dropZone) dropZone.classList.add('drag-over');
+        showDragOverlay();
       });
       window.__TAURI__.event.listen('tauri://drag-over', () => {
-        if (dropZone) dropZone.classList.add('drag-over');
+        showDragOverlay();
       });
       window.__TAURI__.event.listen('tauri://drag-leave', () => {
-        if (dropZone) dropZone.classList.remove('drag-over');
+        hideDragOverlay();
       });
       window.__TAURI__.event.listen('tauri://drag-drop', (event) => {
-        if (dropZone) dropZone.classList.remove('drag-over');
+        hideDragOverlay();
         const paths = event.payload?.paths || (Array.isArray(event.payload) ? event.payload : []);
         paths.forEach(filePath => {
           const fileName = filePath.split(/[\\/]/).pop();
@@ -1228,73 +1378,56 @@ function setupTauriFileDrop() {
         });
       });
     } catch (err) {
-      console.warn('Failed to register window.__TAURI__.event listeners:', err);
+      console.warn('Failed to register window.__TAURI__.event drag listeners:', err);
     }
   }
 
-  // 2. WebviewWindow onDragDropEvent fallback
   try {
     const win = window.__TAURI__.webviewWindow?.getCurrentWebviewWindow?.();
     if (win && typeof win.onDragDropEvent === 'function') {
       win.onDragDropEvent((event) => {
         const type = event?.payload?.type;
         if (type === 'drop') {
-          if (dropZone) dropZone.classList.remove('drag-over');
+          hideDragOverlay();
           const paths = event.payload?.paths || [];
           paths.forEach(filePath => {
             const fileName = filePath.split(/[\\/]/).pop();
             attachFile(fileName, filePath);
           });
         } else if (type === 'enter' || type === 'over') {
-          if (dropZone) dropZone.classList.add('drag-over');
+          showDragOverlay();
         } else if (type === 'leave' || type === 'cancel') {
-          if (dropZone) dropZone.classList.remove('drag-over');
+          hideDragOverlay();
         }
       });
     }
   } catch (err) {
     console.warn('Failed to register webviewWindow.onDragDropEvent:', err);
   }
-
-  // 3. Webview onDragDropEvent fallback
-  try {
-    const wv = window.__TAURI__.webview?.getCurrentWebview?.();
-    if (wv && typeof wv.onDragDropEvent === 'function') {
-      wv.onDragDropEvent((event) => {
-        const type = event?.payload?.type;
-        if (type === 'drop') {
-          if (dropZone) dropZone.classList.remove('drag-over');
-          const paths = event.payload?.paths || [];
-          paths.forEach(filePath => {
-            const fileName = filePath.split(/[\\/]/).pop();
-            attachFile(fileName, filePath);
-          });
-        } else if (type === 'enter' || type === 'over') {
-          if (dropZone) dropZone.classList.add('drag-over');
-        } else if (type === 'leave' || type === 'cancel') {
-          if (dropZone) dropZone.classList.remove('drag-over');
-        }
-      });
-    }
-  } catch (err) {
-    console.warn('Failed to register webview.onDragDropEvent:', err);
-  }
 }
 
 setupTauriFileDrop();
 
-// ── Absolute path attach ───────────────────────────────────────────────────────
-document.getElementById('attach-path-btn').addEventListener('click', attachPath);
-document.getElementById('path-input').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') attachPath();
-});
+// ── Absolute path attach ─────────────────────────────────────────────────────
+const attachPathBtn = document.getElementById('attach-path-btn');
+const pathInput = document.getElementById('path-input');
+
+if (attachPathBtn) {
+  attachPathBtn.addEventListener('click', attachPath);
+}
+if (pathInput) {
+  pathInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') attachPath();
+  });
+}
 
 function attachPath() {
-  const path = document.getElementById('path-input').value.trim();
+  if (!pathInput) return;
+  const path = pathInput.value.trim();
   if (!path) return;
   const name = path.split(/[\\/]/).pop();
   attachFile(name, path);
-  document.getElementById('path-input').value = '';
+  pathInput.value = '';
 }
 
 // ── History controls ───────────────────────────────────────────────────────

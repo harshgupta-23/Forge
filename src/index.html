@@ -14,46 +14,138 @@
     Connection lost — the backend may have stopped.
     <button id="btn-reconnect">Reload</button>
   </div>
-  <header>
-    <h2>
-      <svg class="icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>
-      Forge — Local AI Assistant
-    </h2>
-    <button id="btn-new-session" title="Start a new session">
-      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      New Session
-    </button>
-    <button id="btn-undo">
-      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
-      Undo
-    </button>
-    <button id="btn-branch-prev" title="Navigate to previous turn to create a new branch from there">
-      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-      Branch from Prev
-    </button>
-    <button id="btn-summarise">
-      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-      Summarise
-    </button>
-    <button id="btn-tree-view">
-      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
-      Tree View
-    </button>
-    <button id="btn-fetch-session">
-      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-      Previous Sessions
-    </button>
-    <button id="toggle-settings">
-      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      Settings
-    </button>
+
+  <!-- 1. Window / Header Bar with data-tauri-drag-region -->
+  <header class="app-header" data-tauri-drag-region>
+    <div class="header-left">
+      <button id="btn-toggle-sidebar" class="header-icon-btn" title="Toggle Sidebar (Ctrl+B)">
+        <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <div class="app-brand">
+        <svg class="icon brand-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><circle cx="12" cy="5" r="2"/><path d="M12 7v4"/><line x1="8" y1="16" x2="8" y2="16"/><line x1="16" y1="16" x2="16" y2="16"/></svg>
+        <span class="brand-name">Forge</span>
+        <span class="brand-tag">Assistant</span>
+      </div>
+    </div>
+
+    <div class="header-center">
+      <div id="active-branch-badge" class="header-badge branch-badge" title="Active Branch / Checkpoint">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        <span id="active-branch-label">main</span>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div id="token-usage-bar" class="token-pill-badge" title="Token consumption breakdown">
+        <span class="token-icon">⚡</span>
+        <span id="tokens-5h" title="Tokens used in last 5 hours">5h: –</span>
+        <span class="token-divider">|</span>
+        <span id="tokens-24h" title="Tokens used in last 24 hours">24h: –</span>
+      </div>
+      <button id="btn-branch-prev" class="header-action-btn" title="Branch from Previous Turn">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        <span>Branch</span>
+      </button>
+      <button id="btn-summarise" class="header-action-btn" title="Summarise Conversation History">
+        <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+        <span>Summarise</span>
+      </button>
+      <button id="toggle-settings" class="header-icon-btn" title="Settings">
+        <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
   </header>
 
-  <div id="token-usage-bar">
-    <span id="tokens-5h" title="Tokens used in the last 5 hours">5h: –</span>
-    <span id="tokens-24h" title="Tokens used in the last 24 hours">24h: –</span>
+  <!-- 2. Main Desktop Layout: Sidebar + Canvas -->
+  <div id="main-layout">
+    <!-- Left Navigation Sidebar -->
+    <aside id="app-sidebar">
+      <div class="sidebar-header">
+        <button id="btn-new-session" class="btn-sidebar-new" title="Start a new session">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span>New Chat</span>
+        </button>
+      </div>
+
+      <div class="sidebar-section-title">
+        <span>Recent Sessions</span>
+        <button id="btn-fetch-session" class="icon-tiny-btn" title="Refresh session list">
+          <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        </button>
+      </div>
+
+      <div id="session-list-container" class="sidebar-session-list"></div>
+    </aside>
+
+    <!-- Center Workspace Canvas & Unified Console -->
+    <div id="workspace-canvas">
+      <div id="terminal-chat">
+        <div id="logs"></div>
+        <div id="agent-status-bar"></div>
+      </div>
+
+      <!-- Unified Console Card Container -->
+      <div id="unified-console" class="unified-console-card">
+        <!-- Top Micro-Toolbar -->
+        <div class="console-toolbar">
+          <div class="toolbar-left">
+            <button id="btn-attach-file" class="toolbar-pill-btn" type="button" title="Attach file (or drag & drop anywhere)">
+              <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+              <span>Attach</span>
+            </button>
+            <input type="file" id="file-picker-input" style="display: none;" multiple>
+
+            <!-- Inline Path Pill & Input -->
+            <div id="path-pill-wrap" class="path-pill-wrap">
+              <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+              <input type="text" id="path-input" placeholder="Paste path & press Enter...">
+              <button id="attach-path-btn" class="pill-btn-action" title="Attach entered path">Add</button>
+            </div>
+
+            <!-- Attached Files Tray -->
+            <div id="attached-chips-tray" class="attached-chips-tray"></div>
+          </div>
+
+          <div class="toolbar-right">
+            <button id="btn-tree-view" class="toolbar-pill-btn session-action-btn" type="button" title="Toggle Conversation Tree View">
+              <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+              <span>Tree View</span>
+            </button>
+            <button id="btn-undo" class="toolbar-pill-btn session-action-btn" type="button" title="Undo Last Turn and Branch">
+              <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+              <span>Undo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Multiline Prompt Area -->
+        <div class="console-input-row">
+          <textarea id="user-input" rows="1" placeholder="Type a prompt or execution command... (Shift+Enter for newline, Enter to send)"></textarea>
+          <div class="console-actions">
+            <button id="send-btn" class="send-action-btn" title="Send (Enter)">
+              <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            </button>
+            <button id="btn-stop" class="stop-action-btn hidden" title="Cancel generation">
+              <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  
+
+  <!-- Full-Window Drag & Drop Overlay -->
+  <div id="drag-drop-overlay" class="drag-drop-overlay hidden">
+    <div class="drag-drop-modal">
+      <div class="drag-drop-icon">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </div>
+      <h3>Drop files to attach</h3>
+      <p>Release anywhere to attach to the active conversation turn</p>
+    </div>
+  </div>
+
+  <!-- Panels & Modals -->
   <div id="tree-view-panel" class="hidden">
     <div class="panel-header">
       <h3 style="margin: 0; font-size: 16px;">
@@ -84,7 +176,6 @@
         <svg class="icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
     </div>
-    <div id="session-list-container"></div>
   </div>
 
   <div id="settings-panel" class="settings-modal-overlay hidden">
@@ -387,28 +478,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <div id="terminal-chat">
-    <div id="logs"></div>
-    <div id="agent-status-bar"></div>
-  </div>
-
-  <div id="drop-zone" title="Click to browse or drop files">Drop file here or click to attach</div>
-  <input type="file" id="file-picker-input" style="display: none;" multiple>
-
-  <div id="path-input-area">
-    <input type="text" id="path-input" placeholder="Or paste absolute path: C:\Users\...">
-    <button id="attach-path-btn">Attach Path</button>
-  </div>
-
-  <div id="input-area">
-    <input type="text" id="user-input" placeholder="Issue localized platform execution command...">
-    <button id="send-btn">Execute</button>
-    <button id="btn-stop" class="hidden">
-      <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
-      Stop
-    </button>
   </div>
 </div>
 
