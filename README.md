@@ -20,10 +20,11 @@
 
 Traditional AI assistants force users into linear, fragile chat threads where context bloat burns tokens and dead-end tool failures pollute reasoning. **Forge solves this with a tree-native architecture:**
 
-- 🌿 **Interactive Decision Tree Canvas**: Explore multiple parallel lines of reasoning on an infinite n8n-style zoomable canvas. Fork conversations from any previous turn with instantaneous time-travel rollback.
+- 💻 **Modern Unified Console & Collapsible Workspace**: Clean, Cursor/Claude-inspired unified command card at the bottom, auto-expanding textarea, active attachment chips, full-window frosted drag-and-drop overlay, and a collapsible sidebar (`Ctrl+B`) with instant session rename and deletion.
+- 🌿 **Interactive Decision Tree Canvas & Root Branching**: Explore multiple parallel lines of reasoning on an infinite n8n-style zoomable canvas. Fork conversations from any previous turn or restart fresh branches directly from the session root (`node_root`) with instantaneous time-travel rollback and automatic topic drift detection.
 - ✂️ **Dynamic Context Pruning**: JIT algorithmic compaction that tombstones failed tool retries, truncates bulky outputs, and hierarchically summarizes subtrees—cutting token costs by over 40% while keeping the active branch lean.
 - 🔍 **Hybrid pgvector RAG & Reranking**: Enterprise retrieval combining pgvector cosine similarity with PostgreSQL full-text keyword search via Reciprocal Rank Fusion (RRF) and two-tier LLM reranking.
-- 🛡️ **Zero-Crash Stateful Checkpointing**: Durable persistence powered by `AsyncPostgresSaver` (with zero-configuration local `AsyncSqliteSaver` fallback) preserving complete execution histories across application restarts.
+- 🛡️ **Zero-Crash Stateful Checkpointing**: Durable persistence powered by `AsyncPostgresSaver` (with zero-configuration local `AsyncSqliteSaver` fallback) preserving complete execution histories across application restarts, unified via an async database execution abstraction (`storage/db.py`).
 - 📊 **Production Observability & Automated Evaluation**: Thread-scoped LangSmith tracing and an automated Ragas continuous evaluation harness integrated into GitHub Actions CI.
 - ☁️ **Cloud-Ready & Hybrid Decoupled**: Multi-stage non-root Docker containerization, AWS Terraform infrastructure (ECS Fargate, RDS PostgreSQL, ALB), and thin-client remote connectivity.
 
@@ -109,6 +110,16 @@ Decomposes complex requests into discrete, observable steps with role-specific m
 - **Terraform IaC for AWS**: Modular cloud blueprint provisioning a VPC, subnets across 2 AZs, RDS PostgreSQL 16 + pgvector, ECS Fargate, Secrets Manager, and an ALB with extended `300s` WebSocket idle timeout.
 - **Hybrid Client Architecture**: Allows running the Tauri UI as a thin client connecting to a remote backend (`BACKEND_MODE=remote`), bypassing local sidecar execution.
 
+### 6. Modern Unified Console & Interactive Session Lifecycle
+- **Unified Bottom Console**: Clean, single-card input architecture combining text prompt, attachment chips, auto-resizing input, and quick toolbars while eliminating vertical UI clutter.
+- **Collapsible Sidebar & Session Lifecycle**: Fast O(1) indexed session listing from `forge_session_summaries`, with in-place session renaming, full cascading session deletion, and keyboard shortcuts (`Ctrl+B`).
+- **Autonomous Topic Gate**: Real-time topic shift evaluation (`topic_gate`) monitoring context drift; offers interactive branching choices (`branch_decision`) before context degradation occurs.
+- **Full Root Branching**: True branching directly from the session root (`node_root`), allowing users to switch back to the conversation genesis and fork fresh parallel threads.
+
+### 7. Unified Storage Engine & Deduplicated Execution (`storage/db.py`)
+- **Zero-Duplication Dual Backend**: Unified async execution helper (`db_execute`, `db_execute_batch`) handling cursor lifecycles, transaction commits, and parameter translation (`?` to `%s`) across PostgreSQL and SQLite.
+- **Shared Vector RRF Engine**: Consolidated Reciprocal Rank Fusion (`_apply_rrf`) scoring loop unifying pgvector and local vector search result ranking.
+
 ---
 
 ## 🛠️ Built-in Tool Suite & Defense-in-Depth Security Guardrails
@@ -183,7 +194,7 @@ bash linux/start.sh --docker
 
 ### 3. Run Automated Evaluation & Test Suites
 ```bash
-# Runs all 8 test suites (Phases 1–6 regression + Ragas evaluation + Guardrails)
+# Runs all 10 test suites (Phases 1–6 regression + Ragas evaluation + Guardrails + Undo + Topic Gate)
 npm test
 ```
 
@@ -194,10 +205,10 @@ npm test
 | Layer | Technologies |
 |---|---|
 | **Desktop Shell** | Tauri v2, Rust, WebKitGTK / WebView2 |
-| **Frontend UI** | Vanilla JavaScript (ES6+), SVG Canvas, Marked.js, Highlight.js |
+| **Frontend UI** | Vanilla JavaScript (ES6+), Unified Console, SVG Canvas, Marked.js, Highlight.js |
 | **Backend Gateway** | FastAPI, Uvicorn, Pydantic v2, Server-Sent Events (SSE), WebSockets |
 | **Agent Core** | LangGraph, LangChain Core, OpenAI Python SDK |
-| **Data & Retrieval** | PostgreSQL 16, pgvector, aiosqlite, AsyncPostgresSaver, RRF Fusion |
+| **Data & Retrieval** | PostgreSQL 16, pgvector, aiosqlite, AsyncPostgresSaver, db_execute abstraction, RRF Fusion |
 | **Observability** | LangSmith (`@traceable`, `LangChainTracer`), BPE Tokenizer (`tiktoken`) |
 | **Evaluation** | Ragas continuous evaluation metrics, GitHub Actions CI/CD |
 | **Infrastructure** | Docker (multi-stage non-root), Docker Compose, Terraform (AWS) |
